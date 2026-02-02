@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -289,7 +290,9 @@ export const DsaDetail = () => {
                 )}
               </div>
               <DialogFooter>
-                <Button variant="ghost">Cancel</Button>
+                <DialogClose asChild>
+                  <Button variant="ghost">Cancel</Button>
+                </DialogClose>
                 <Button onClick={handleUpdate} disabled={savingEdit}>
                   {savingEdit ? "Saving..." : "Save changes"}
                 </Button>
@@ -324,6 +327,21 @@ export const DsaDetail = () => {
           <div>
             <p className="text-xs text-muted-foreground">Tags</p>
             <p className="text-sm font-medium">{problem.tags.join(", ") || "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Link</p>
+            {problem.link ? (
+              <a
+                href={problem.link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-accent hover:text-accent-hover"
+              >
+                Open problem
+              </a>
+            ) : (
+              <p className="text-sm font-medium">—</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Last updated</p>

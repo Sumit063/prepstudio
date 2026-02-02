@@ -4,6 +4,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -49,6 +50,16 @@ export const Design = () => {
   const [editForm, setEditForm] = useState(emptyForm);
   const [savingEdit, setSavingEdit] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sheetItems, setSheetItems] = useState(
+    [
+      { id: 1, title: "Design a URL shortener", done: false },
+      { id: 2, title: "Design a rate limiter", done: true },
+      { id: 3, title: "Design chat messaging", done: false },
+      { id: 4, title: "Design a news feed", done: false },
+    ]
+  );
+  const [sheetInput, setSheetInput] = useState("");
+  const [sheetNotes, setSheetNotes] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -81,6 +92,19 @@ export const Design = () => {
       return acc;
     }, {} as Record<CategoryValue, DesignTopic[]>);
   }, [topics]);
+
+  const tracker = useMemo(() => {
+    const total = topics.length;
+    const activeCount = topicsByCategory[activeCategory]?.length ?? 0;
+    const withNotes = topics.filter((topic) => topic.notes_markdown?.trim()).length;
+    return { total, activeCount, withNotes };
+  }, [topics, topicsByCategory, activeCategory]);
+
+  const sheetProgress = useMemo(() => {
+    const total = sheetItems.length;
+    const done = sheetItems.filter((item) => item.done).length;
+    return { total, done };
+  }, [sheetItems]);
 
   useEffect(() => {
     const list = topicsByCategory[activeCategory] ?? [];
@@ -244,7 +268,9 @@ export const Design = () => {
               )}
             </div>
             <DialogFooter>
-              <Button variant="ghost">Cancel</Button>
+              <DialogClose asChild>
+                <Button variant="ghost">Cancel</Button>
+              </DialogClose>
               <Button onClick={handleCreate} disabled={saving}>
                 {saving ? "Saving..." : "Save topic"}
               </Button>
@@ -258,6 +284,40 @@ export const Design = () => {
           Error: {error}
         </div>
       )}
+
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tracker</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Total topics</p>
+                <p className="text-lg font-semibold">{tracker.total}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">In category</p>
+                <p className="text-lg font-semibold">{tracker.activeCount}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">With notes</p>
+                <p className="text-lg font-semibold">{tracker.withNotes}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Category view</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Browse topics by system design category and keep notes centralized.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CategoryValue)}>
         <TabsList>
@@ -380,7 +440,9 @@ export const Design = () => {
                               )}
                             </div>
                             <DialogFooter>
-                              <Button variant="ghost">Cancel</Button>
+                              <DialogClose asChild>
+                                <Button variant="ghost">Cancel</Button>
+                              </DialogClose>
                               <Button onClick={handleUpdate} disabled={savingEdit}>
                                 {savingEdit ? "Saving..." : "Save changes"}
                               </Button>
@@ -417,6 +479,73 @@ export const Design = () => {
           </TabsContent>
         ))}
       </Tabs>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>System Design Sheet</CardTitle>
+            <span className="text-xs text-muted-foreground">
+              {sheetProgress.done}/{sheetProgress.total} completed
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                value={sheetInput}
+                onChange={(event) => setSheetInput(event.target.value)}
+                placeholder="Add a sheet prompt"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!sheetInput.trim()) return;
+                  setSheetItems((prev) => [
+                    ...prev,
+                    { id: Date.now(), title: sheetInput.trim(), done: false },
+                  ]);
+                  setSheetInput("");
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {sheetItems.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                >
+                  <span className={item.done ? "line-through text-muted-foreground" : ""}>
+                    {item.title}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={() =>
+                      setSheetItems((prev) =>
+                        prev.map((entry) =>
+                          entry.id === item.id ? { ...entry, done: !entry.done } : entry
+                        )
+                      )
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Notes</p>
+            <Textarea
+              value={sheetNotes}
+              onChange={(event) => setSheetNotes(event.target.value)}
+              placeholder="Capture takeaways or next steps"
+              className="min-h-[180px]"
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

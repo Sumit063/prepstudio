@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -65,6 +66,16 @@ export const DsaList = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [sheetItems, setSheetItems] = useState(
+    [
+      { id: 1, title: "Two Sum", done: true },
+      { id: 2, title: "Binary Search", done: false },
+      { id: 3, title: "Merge Intervals", done: false },
+      { id: 4, title: "LRU Cache", done: false },
+    ]
+  );
+  const [sheetInput, setSheetInput] = useState("");
+  const [sheetNotes, setSheetNotes] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -144,6 +155,21 @@ export const DsaList = () => {
     }
     return problems.filter((problem) => statusMap[problem.id] === statusFilter);
   }, [problems, statusFilter, statusMap]);
+
+  const tracker = useMemo(() => {
+    const total = problems.length;
+    const solved = Object.values(statusMap).filter((status) => status === "Solved").length;
+    const partial = Object.values(statusMap).filter((status) => status === "Partial").length;
+    const unsolved = total - solved - partial;
+    const completion = total ? Math.round((solved / total) * 100) : 0;
+    return { total, solved, partial, unsolved, completion };
+  }, [problems, statusMap]);
+
+  const sheetProgress = useMemo(() => {
+    const total = sheetItems.length;
+    const done = sheetItems.filter((item) => item.done).length;
+    return { total, done };
+  }, [sheetItems]);
 
   const handleCreate = async () => {
     setSaving(true);
@@ -259,7 +285,9 @@ export const DsaList = () => {
               )}
             </div>
             <DialogFooter>
-              <Button variant="ghost">Cancel</Button>
+              <DialogClose asChild>
+                <Button variant="ghost">Cancel</Button>
+              </DialogClose>
               <Button onClick={handleCreate} disabled={saving}>
                 {saving ? "Saving..." : "Save problem"}
               </Button>
@@ -274,35 +302,62 @@ export const DsaList = () => {
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search problems"
-            />
-            <Select
-              value={difficultyFilter}
-              onChange={(event) => setDifficultyFilter(event.target.value)}
-            >
-              <option value="All">All difficulties</option>
-              <option value="1-2">1-2</option>
-              <option value="3">3</option>
-              <option value="4-5">4-5</option>
-            </Select>
-            <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="All">All status</option>
-              <option value="Solved">Solved</option>
-              <option value="Partial">Partial</option>
-              <option value="Unsolved">Unsolved</option>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tracker</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="text-lg font-semibold">{tracker.total}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Solved</p>
+                <p className="text-lg font-semibold">{tracker.solved}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Partial</p>
+                <p className="text-lg font-semibold">{tracker.partial}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Completion</p>
+                <p className="text-lg font-semibold">{tracker.completion}%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search problems"
+              />
+              <Select
+                value={difficultyFilter}
+                onChange={(event) => setDifficultyFilter(event.target.value)}
+              >
+                <option value="All">All difficulties</option>
+                <option value="1-2">1-2</option>
+                <option value="3">3</option>
+                <option value="4-5">4-5</option>
+              </Select>
+              <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="All">All status</option>
+                <option value="Solved">Solved</option>
+                <option value="Partial">Partial</option>
+                <option value="Unsolved">Unsolved</option>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -341,6 +396,16 @@ export const DsaList = () => {
                       <div className="text-xs text-muted-foreground">
                         {problem.tags.join(" • ") || "No tags"}
                       </div>
+                      {problem.link && (
+                        <a
+                          href={problem.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-accent hover:text-accent-hover"
+                        >
+                          Open link
+                        </a>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{platformLabel(problem.platform)}</TableCell>
                     <TableCell>{problem.difficulty}</TableCell>
@@ -362,6 +427,73 @@ export const DsaList = () => {
                 )}
               </TableBody>
             </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>DSA Sheet</CardTitle>
+            <span className="text-xs text-muted-foreground">
+              {sheetProgress.done}/{sheetProgress.total} completed
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                value={sheetInput}
+                onChange={(event) => setSheetInput(event.target.value)}
+                placeholder="Add a sheet problem"
+              />
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!sheetInput.trim()) return;
+                  setSheetItems((prev) => [
+                    ...prev,
+                    { id: Date.now(), title: sheetInput.trim(), done: false },
+                  ]);
+                  setSheetInput("");
+                }}
+              >
+                Add
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {sheetItems.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                >
+                  <span className={item.done ? "line-through text-muted-foreground" : ""}>
+                    {item.title}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={() =>
+                      setSheetItems((prev) =>
+                        prev.map((entry) =>
+                          entry.id === item.id ? { ...entry, done: !entry.done } : entry
+                        )
+                      )
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Notes</p>
+            <Textarea
+              value={sheetNotes}
+              onChange={(event) => setSheetNotes(event.target.value)}
+              placeholder="Add notes for your sheet progress"
+              className="min-h-[180px]"
+            />
           </div>
         </CardContent>
       </Card>
