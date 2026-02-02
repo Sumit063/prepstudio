@@ -30,3 +30,7 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Local docs/logs
+HANDBOOK.md
+WORKLOG.md
