@@ -1,5 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link2, Plus, Trash2 } from "lucide-react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
@@ -31,6 +33,28 @@ const categories = [
 
 type CategoryValue = (typeof categories)[number]["value"];
 
+type ReferenceItem = {
+  id: number;
+  label: string;
+  url: string;
+};
+
+type CanvasNode = {
+  id: number;
+  title: string;
+  x: number;
+  y: number;
+};
+
+type CanvasEdge = {
+  id: number;
+  from: number;
+  to: number;
+};
+
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 64;
+
 const emptyForm = {
   title: "",
   category: "HLD" as CategoryValue,
@@ -50,16 +74,9 @@ export const Design = () => {
   const [editForm, setEditForm] = useState(emptyForm);
   const [savingEdit, setSavingEdit] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [sheetItems, setSheetItems] = useState(
-    [
-      { id: 1, title: "Design a URL shortener", done: false },
-      { id: 2, title: "Design a rate limiter", done: true },
-      { id: 3, title: "Design chat messaging", done: false },
-      { id: 4, title: "Design a news feed", done: false },
-    ]
-  );
-  const [sheetInput, setSheetInput] = useState("");
-  const [sheetNotes, setSheetNotes] = useState("");
+  const [topicDrafts, setTopicDrafts] = useState<Record<number, string>>({});
+  const [referencesByTopic, setReferencesByTopic] = useState<Record<number, ReferenceItem[]>>({});
+  const [referenceDraft, setReferenceDraft] = useState({ label: "", url: "" });
 
   useEffect(() => {
     let active = true;
@@ -93,19 +110,6 @@ export const Design = () => {
     }, {} as Record<CategoryValue, DesignTopic[]>);
   }, [topics]);
 
-  const tracker = useMemo(() => {
-    const total = topics.length;
-    const activeCount = topicsByCategory[activeCategory]?.length ?? 0;
-    const withNotes = topics.filter((topic) => topic.notes_markdown?.trim()).length;
-    return { total, activeCount, withNotes };
-  }, [topics, topicsByCategory, activeCategory]);
-
-  const sheetProgress = useMemo(() => {
-    const total = sheetItems.length;
-    const done = sheetItems.filter((item) => item.done).length;
-    return { total, done };
-  }, [sheetItems]);
-
   useEffect(() => {
     const list = topicsByCategory[activeCategory] ?? [];
     if (list.length === 0) {
@@ -119,6 +123,14 @@ export const Design = () => {
 
   const activeTopics = topicsByCategory[activeCategory] ?? [];
   const selectedTopic = activeTopics.find((topic) => topic.id === selectedTopicId) ?? activeTopics[0];
+  const selectedTopicIdValue = selectedTopic?.id ?? null;
+
+  const tracker = useMemo(() => {
+    const total = topics.length;
+    const activeCount = topicsByCategory[activeCategory]?.length ?? 0;
+    const withNotes = topics.filter((topic) => topic.notes_markdown?.trim()).length;
+    return { total, activeCount, withNotes };
+  }, [topics, topicsByCategory, activeCategory]);
 
   useEffect(() => {
     if (selectedTopic) {
@@ -131,6 +143,60 @@ export const Design = () => {
       });
     }
   }, [selectedTopic]);
+
+  useEffect(() => {
+    if (!selectedTopic) return;
+    setReferencesByTopic((prev) => {
+      if (prev[selectedTopic.id]) return prev;
+      const initial = Array.isArray(selectedTopic.references_json)
+        ? selectedTopic.references_json
+        : [];
+      const normalized = initial.map((ref, index) => {
+        if (typeof ref === "string") {
+          return { id: index + 1, label: ref, url: ref };
+        }
+        if (ref && typeof ref === "object") {
+          const label =
+            "label" in ref
+              ? String((ref as { label?: string }).label ?? "Reference")
+              : "title" in ref
+                ? String((ref as { title?: string }).title ?? "Reference")
+                : "Reference";
+          const url = "url" in ref ? String((ref as { url?: string }).url ?? "") : "";
+          return { id: index + 1, label, url };
+        }
+        return { id: index + 1, label: "Reference", url: "" };
+      });
+      return { ...prev, [selectedTopic.id]: normalized };
+    });
+  }, [selectedTopic]);
+
+  const editor = useEditor(
+    {
+      extensions: [StarterKit],
+      content: selectedTopicIdValue
+        ? topicDrafts[selectedTopicIdValue] ?? selectedTopic?.notes_markdown ?? ""
+        : "",
+      onUpdate: ({ editor }) => {
+        if (!selectedTopicIdValue) return;
+        setTopicDrafts((prev) => ({
+          ...prev,
+          [selectedTopicIdValue]: editor.getHTML(),
+        }));
+      },
+      editorProps: {
+        attributes: {
+          class:
+            "min-h-[260px] rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none",
+        },
+      },
+    },
+    [selectedTopicIdValue]
+  );
+
+  const activeReferences = selectedTopicIdValue
+    ? referencesByTopic[selectedTopicIdValue] ?? []
+    : [];
 
   const handleCreate = async () => {
     setSaving(true);
@@ -192,12 +258,35 @@ export const Design = () => {
     }
   };
 
+  const handleAddReference = () => {
+    if (!selectedTopicIdValue) return;
+    if (!referenceDraft.label.trim() && !referenceDraft.url.trim()) return;
+    const label = referenceDraft.label.trim() || referenceDraft.url.trim();
+    const url = referenceDraft.url.trim();
+    setReferencesByTopic((prev) => ({
+      ...prev,
+      [selectedTopicIdValue]: [
+        ...(prev[selectedTopicIdValue] ?? []),
+        { id: Date.now(), label, url },
+      ],
+    }));
+    setReferenceDraft({ label: "", url: "" });
+  };
+
+  const removeReference = (refId: number) => {
+    if (!selectedTopicIdValue) return;
+    setReferencesByTopic((prev) => ({
+      ...prev,
+      [selectedTopicIdValue]: (prev[selectedTopicIdValue] ?? []).filter((ref) => ref.id !== refId),
+    }));
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">System Design</p>
-          <h1 className="text-2xl font-semibold">Knowledge base</h1>
+          <h1 className="text-2xl font-semibold">Design sheets</h1>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -309,11 +398,11 @@ export const Design = () => {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Category view</CardTitle>
+            <CardTitle>Study flow</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Browse topics by system design category and keep notes centralized.
+              Use the sheet list to select a topic, then expand the workspace for deeper notes and diagrams.
             </p>
           </CardContent>
         </Card>
@@ -330,29 +419,38 @@ export const Design = () => {
 
         {categories.map((category) => (
           <TabsContent key={category.value} value={category.value}>
-            <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Topics</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>{category.label} sheet</CardTitle>
+                    <span className="text-xs text-muted-foreground">
+                      {(topicsByCategory[category.value] ?? []).length} topics
+                    </span>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {loading && (
-                    <p className="text-xs text-muted-foreground">Loading topics...</p>
-                  )}
+                  {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
                   {(topicsByCategory[category.value] ?? []).map((topic) => (
                     <button
                       key={topic.id}
                       onClick={() => setSelectedTopicId(topic.id)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                      className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left ${
                         topic.id === selectedTopicId
                           ? "border-accent bg-muted"
                           : "border-border hover:bg-muted"
                       }`}
                     >
-                      <div className="font-medium">{topic.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Updated {formatDate(topic.updated_at)}
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{topic.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Updated {formatDate(topic.updated_at)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {topic.tags.join(" • ") || "No tags"}
+                        </div>
                       </div>
+                      <span className="text-[11px] text-muted-foreground">{topic.category}</span>
                     </button>
                   ))}
                   {!loading && (topicsByCategory[category.value] ?? []).length === 0 && (
@@ -361,15 +459,22 @@ export const Design = () => {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="max-w-none">
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{selectedTopic?.title ?? "Select a topic"}</CardTitle>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <CardTitle>{selectedTopic?.title ?? "Select a topic"}</CardTitle>
+                      {selectedTopic && (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedTopic.category} • Updated {formatDate(selectedTopic.updated_at)}
+                        </p>
+                      )}
+                    </div>
                     {selectedTopic && (
                       <div className="flex items-center gap-2">
                         <Dialog>
                           <DialogTrigger asChild>
-                            <Button variant="outline">Edit</Button>
+                            <Button variant="outline" size="sm">Edit</Button>
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
@@ -449,103 +554,312 @@ export const Design = () => {
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
-                        <Button variant="outline" onClick={handleDelete}>
+                        <Button variant="outline" size="sm" onClick={handleDelete}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     )}
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                    {selectedTopic?.notes_markdown || "Pick a topic to view notes."}
-                  </div>
-                  <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
-                    {selectedTopic?.tradeoffs || "Tradeoffs not captured yet."}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedTopic?.tags ?? []).map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                <CardContent className="space-y-6">
+                  {!selectedTopic && (
+                    <p className="text-sm text-muted-foreground">
+                      Select a topic to start capturing your design notes.
+                    </p>
+                  )}
+                  {selectedTopic && (
+                    <>
+                      <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Solution page</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => editor?.chain().focus().toggleBold().run()}
+                            disabled={!editor}
+                          >
+                            Bold
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => editor?.chain().focus().toggleItalic().run()}
+                            disabled={!editor}
+                          >
+                            Italic
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                            disabled={!editor}
+                          >
+                            Bullets
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
+                            disabled={!editor}
+                          >
+                            Code block
+                          </Button>
+                        </div>
+                        <EditorContent editor={editor} />
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tradeoffs</p>
+                        <Textarea
+                          value={editForm.tradeoffs}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({ ...prev, tradeoffs: event.target.value }))
+                          }
+                          placeholder="Latency vs throughput, consistency vs availability"
+                          className="min-h-[120px]"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">References</p>
+                          <span className="text-xs text-muted-foreground">{activeReferences.length} links</span>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                          <Input
+                            value={referenceDraft.label}
+                            onChange={(event) =>
+                              setReferenceDraft((prev) => ({ ...prev, label: event.target.value }))
+                            }
+                            placeholder="Label"
+                          />
+                          <Input
+                            value={referenceDraft.url}
+                            onChange={(event) =>
+                              setReferenceDraft((prev) => ({ ...prev, url: event.target.value }))
+                            }
+                            placeholder="https://youtube.com/..."
+                          />
+                          <Button variant="outline" onClick={handleAddReference}>
+                            <Plus className="h-4 w-4" />
+                            Add
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {activeReferences.map((ref) => (
+                            <div
+                              key={ref.id}
+                              className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Link2 className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <div className="font-medium">{ref.label}</div>
+                                  {ref.url && (
+                                    <a
+                                      href={ref.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-xs text-accent hover:text-accent-hover"
+                                    >
+                                      {ref.url}
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                              <Button variant="ghost" size="sm" onClick={() => removeReference(ref.id)}>
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                          {activeReferences.length === 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Add reference links from YouTube, Medium, or docs.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Design canvas</p>
+                        <CanvasBoard />
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
         ))}
       </Tabs>
+    </div>
+  );
+};
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>System Design Sheet</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {sheetProgress.done}/{sheetProgress.total} completed
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                value={sheetInput}
-                onChange={(event) => setSheetInput(event.target.value)}
-                placeholder="Add a sheet prompt"
+const CanvasBoard = () => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const [nodes, setNodes] = useState<CanvasNode[]>([
+    { id: 1, title: "Client", x: 40, y: 40 },
+    { id: 2, title: "API Gateway", x: 240, y: 40 },
+    { id: 3, title: "Service", x: 240, y: 160 },
+  ]);
+  const [edges, setEdges] = useState<CanvasEdge[]>([]);
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectFrom, setConnectFrom] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!dragRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const nextX = event.clientX - rect.left - dragRef.current.offsetX;
+      const nextY = event.clientY - rect.top - dragRef.current.offsetY;
+      const clampedX = Math.max(0, Math.min(rect.width - NODE_WIDTH, nextX));
+      const clampedY = Math.max(0, Math.min(rect.height - NODE_HEIGHT, nextY));
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === dragRef.current?.id ? { ...node, x: clampedX, y: clampedY } : node
+        )
+      );
+    };
+
+    const handleUp = () => {
+      dragRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, []);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>, nodeId: number) => {
+    if (connectMode) return;
+    event.stopPropagation();
+    const target = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      id: nodeId,
+      offsetX: event.clientX - target.left,
+      offsetY: event.clientY - target.top,
+    };
+  };
+
+  const handleNodeClick = (nodeId: number) => {
+    if (!connectMode) return;
+    if (!connectFrom) {
+      setConnectFrom(nodeId);
+      return;
+    }
+    if (connectFrom === nodeId) return;
+    setEdges((prev) => [...prev, { id: Date.now(), from: connectFrom, to: nodeId }]);
+    setConnectFrom(null);
+    setConnectMode(false);
+  };
+
+  const handleAddNode = () => {
+    const container = containerRef.current?.getBoundingClientRect();
+    const x = container ? container.width / 2 - NODE_WIDTH / 2 : 40;
+    const y = container ? container.height / 2 - NODE_HEIGHT / 2 : 40;
+    setNodes((prev) => [
+      ...prev,
+      { id: Date.now(), title: "New node", x: x + Math.random() * 20, y: y + Math.random() * 20 },
+    ]);
+  };
+
+  const handleClear = () => {
+    setNodes([]);
+    setEdges([]);
+    setConnectFrom(null);
+    setConnectMode(false);
+  };
+
+  const getNodeCenter = (node: CanvasNode) => ({
+    x: node.x + NODE_WIDTH / 2,
+    y: node.y + NODE_HEIGHT / 2,
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={handleAddNode}>
+          <Plus className="h-3 w-3" />
+          Add node
+        </Button>
+        <Button
+          variant={connectMode ? "primary" : "outline"}
+          size="sm"
+          onClick={() => {
+            setConnectMode((prev) => !prev);
+            setConnectFrom(null);
+          }}
+        >
+          {connectMode ? "Select nodes" : "Connect nodes"}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleClear}>
+          Clear
+        </Button>
+        {connectFrom && (
+          <span className="text-xs text-muted-foreground">Select another node to connect.</span>
+        )}
+      </div>
+      <div
+        ref={containerRef}
+        className="relative h-[360px] overflow-hidden rounded-md border border-border bg-background"
+      >
+        <svg className="absolute inset-0 h-full w-full">
+          {edges.map((edge) => {
+            const fromNode = nodes.find((node) => node.id === edge.from);
+            const toNode = nodes.find((node) => node.id === edge.to);
+            if (!fromNode || !toNode) return null;
+            const from = getNodeCenter(fromNode);
+            const to = getNodeCenter(toNode);
+            return (
+              <line
+                key={edge.id}
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="#71717a"
+                strokeWidth="1.5"
               />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (!sheetInput.trim()) return;
-                  setSheetItems((prev) => [
-                    ...prev,
-                    { id: Date.now(), title: sheetInput.trim(), done: false },
-                  ]);
-                  setSheetInput("");
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {sheetItems.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                >
-                  <span className={item.done ? "line-through text-muted-foreground" : ""}>
-                    {item.title}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={() =>
-                      setSheetItems((prev) =>
-                        prev.map((entry) =>
-                          entry.id === item.id ? { ...entry, done: !entry.done } : entry
-                        )
-                      )
-                    }
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Notes</p>
-            <Textarea
-              value={sheetNotes}
-              onChange={(event) => setSheetNotes(event.target.value)}
-              placeholder="Capture takeaways or next steps"
-              className="min-h-[180px]"
+            );
+          })}
+        </svg>
+        {nodes.map((node) => (
+          <div
+            key={node.id}
+            role="button"
+            tabIndex={0}
+            onPointerDown={(event) => handlePointerDown(event, node.id)}
+            onClick={() => handleNodeClick(node.id)}
+            className={`absolute rounded-md border px-3 py-2 text-xs font-medium transition ${
+              connectFrom === node.id ? "border-accent bg-muted" : "border-border bg-surface"
+            }`}
+            style={{ left: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
+          >
+            <input
+              value={node.title}
+              onChange={(event) =>
+                setNodes((prev) =>
+                  prev.map((entry) =>
+                    entry.id === node.id ? { ...entry, title: event.target.value } : entry
+                  )
+                )
+              }
+              className="w-full bg-transparent text-xs font-medium text-foreground focus:outline-none"
             />
+            <div className="mt-2 text-[11px] text-muted-foreground">Drag to reposition</div>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+        {nodes.length === 0 && (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Add nodes to start mapping the architecture.
+          </div>
+        )}
+      </div>
     </div>
   );
 };

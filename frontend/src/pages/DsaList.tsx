@@ -1,4 +1,4 @@
-﻿import { Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
@@ -15,10 +15,16 @@ import {
 } from "../components/ui/Dialog";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
 import { createDsaProblem, listDsaProblems, listProblemAttempts } from "../lib/api";
 import type { DSAProblem, DSAAttempt } from "../lib/api";
 import { formatDate } from "../lib/format";
+
+type Approach = {
+  id: number;
+  title: string;
+  notes: string;
+  code: string;
+};
 
 const statusLabel = (status?: DSAAttempt["status"]) => {
   if (status === "SOLVED") return "Solved";
@@ -66,16 +72,10 @@ export const DsaList = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [sheetItems, setSheetItems] = useState(
-    [
-      { id: 1, title: "Two Sum", done: true },
-      { id: 2, title: "Binary Search", done: false },
-      { id: 3, title: "Merge Intervals", done: false },
-      { id: 4, title: "LRU Cache", done: false },
-    ]
-  );
-  const [sheetInput, setSheetInput] = useState("");
-  const [sheetNotes, setSheetNotes] = useState("");
+  const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
+  const [sheetChecks, setSheetChecks] = useState<Record<number, boolean>>({});
+  const [approachMap, setApproachMap] = useState<Record<number, Approach[]>>({});
+  const [problemNotes, setProblemNotes] = useState<Record<number, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -149,12 +149,34 @@ export const DsaList = () => {
     };
   }, [search, difficultyFilter]);
 
+  useEffect(() => {
+    setSheetChecks((prev) => {
+      const next = { ...prev };
+      problems.forEach((problem) => {
+        if (next[problem.id] === undefined) {
+          next[problem.id] = statusMap[problem.id] === "Solved";
+        }
+      });
+      return next;
+    });
+  }, [problems, statusMap]);
+
   const filteredProblems = useMemo(() => {
     if (statusFilter === "All") {
       return problems;
     }
     return problems.filter((problem) => statusMap[problem.id] === statusFilter);
   }, [problems, statusFilter, statusMap]);
+
+  useEffect(() => {
+    if (filteredProblems.length === 0) {
+      setSelectedProblemId(null);
+      return;
+    }
+    if (!selectedProblemId || !filteredProblems.some((problem) => problem.id === selectedProblemId)) {
+      setSelectedProblemId(filteredProblems[0].id);
+    }
+  }, [filteredProblems, selectedProblemId]);
 
   const tracker = useMemo(() => {
     const total = problems.length;
@@ -165,11 +187,10 @@ export const DsaList = () => {
     return { total, solved, partial, unsolved, completion };
   }, [problems, statusMap]);
 
-  const sheetProgress = useMemo(() => {
-    const total = sheetItems.length;
-    const done = sheetItems.filter((item) => item.done).length;
-    return { total, done };
-  }, [sheetItems]);
+  const selectedProblem =
+    filteredProblems.find((problem) => problem.id === selectedProblemId) ?? filteredProblems[0];
+  const approaches = selectedProblem ? approachMap[selectedProblem.id] ?? [] : [];
+  const workspaceNotes = selectedProblem ? problemNotes[selectedProblem.id] ?? "" : "";
 
   const handleCreate = async () => {
     setSaving(true);
@@ -198,12 +219,50 @@ export const DsaList = () => {
     }
   };
 
+  const handleAddApproach = () => {
+    if (!selectedProblem) return;
+    setApproachMap((prev) => {
+      const current = prev[selectedProblem.id] ?? [];
+      return {
+        ...prev,
+        [selectedProblem.id]: [
+          ...current,
+          { id: Date.now(), title: "", notes: "", code: "" },
+        ],
+      };
+    });
+  };
+
+  const updateApproach = (approachId: number, patch: Partial<Approach>) => {
+    if (!selectedProblem) return;
+    setApproachMap((prev) => {
+      const current = prev[selectedProblem.id] ?? [];
+      return {
+        ...prev,
+        [selectedProblem.id]: current.map((approach) =>
+          approach.id === approachId ? { ...approach, ...patch } : approach
+        ),
+      };
+    });
+  };
+
+  const removeApproach = (approachId: number) => {
+    if (!selectedProblem) return;
+    setApproachMap((prev) => {
+      const current = prev[selectedProblem.id] ?? [];
+      return {
+        ...prev,
+        [selectedProblem.id]: current.filter((approach) => approach.id !== approachId),
+      };
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DSA</p>
-          <h1 className="text-2xl font-semibold">Problems library</h1>
+          <h1 className="text-2xl font-semibold">Problem sheet</h1>
         </div>
         <Dialog>
           <DialogTrigger asChild>
@@ -359,144 +418,176 @@ export const DsaList = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Problem list</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Platform</TableHead>
-                  <TableHead>Difficulty</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Attempts</TableHead>
-                  <TableHead>Last attempt</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      Loading problems...
-                    </TableCell>
-                  </TableRow>
-                )}
-                {filteredProblems.map((problem) => (
-                  <TableRow key={problem.id}>
-                    <TableCell>
-                      <Link
-                        to={`/dsa/${problem.id}`}
-                        className="font-medium text-foreground hover:text-accent"
-                      >
-                        {problem.title}
-                      </Link>
+      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>DSA Sheet</CardTitle>
+              <span className="text-xs text-muted-foreground">{filteredProblems.length} items</span>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading && <p className="text-xs text-muted-foreground">Loading problems...</p>}
+            {filteredProblems.map((problem) => {
+              const status = statusMap[problem.id] ?? "Unsolved";
+              const isActive = problem.id === selectedProblem?.id;
+              return (
+                <button
+                  key={problem.id}
+                  onClick={() => setSelectedProblemId(problem.id)}
+                  className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left transition ${
+                    isActive ? "border-accent bg-muted" : "border-border hover:bg-muted"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={sheetChecks[problem.id] ?? false}
+                      onChange={() =>
+                        setSheetChecks((prev) => ({
+                          ...prev,
+                          [problem.id]: !(prev[problem.id] ?? false),
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                    <div>
+                      <div className="font-medium text-sm text-foreground">{problem.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {platformLabel(problem.platform)} • Difficulty {problem.difficulty}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {problem.tags.join(" • ") || "No tags"}
                       </div>
-                      {problem.link && (
-                        <a
-                          href={problem.link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-accent hover:text-accent-hover"
-                        >
-                          Open link
-                        </a>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{platformLabel(problem.platform)}</TableCell>
-                    <TableCell>{problem.difficulty}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={statusMap[problem.id] ?? "Unsolved"} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{problem.attempts_count}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {lastAttemptMap[problem.id] ?? formatDate(problem.updated_at)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!loading && filteredProblems.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No problems yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <StatusBadge status={status} />
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {lastAttemptMap[problem.id] ?? "—"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {!loading && filteredProblems.length === 0 && (
+              <p className="text-xs text-muted-foreground">No problems yet.</p>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>DSA Sheet</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {sheetProgress.done}/{sheetProgress.total} completed
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                value={sheetInput}
-                onChange={(event) => setSheetInput(event.target.value)}
-                placeholder="Add a sheet problem"
-              />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (!sheetInput.trim()) return;
-                  setSheetItems((prev) => [
-                    ...prev,
-                    { id: Date.now(), title: sheetInput.trim(), done: false },
-                  ]);
-                  setSheetInput("");
-                }}
-              >
-                Add
-              </Button>
+        <Card className="min-h-[520px]">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle>{selectedProblem?.title ?? "Select a problem"}</CardTitle>
+                {selectedProblem && (
+                  <p className="text-xs text-muted-foreground">
+                    {platformLabel(selectedProblem.platform)} • Difficulty {selectedProblem.difficulty} • Updated {formatDate(selectedProblem.updated_at)}
+                  </p>
+                )}
+              </div>
+              {selectedProblem && (
+                <div className="flex flex-col items-end gap-2">
+                  <Link
+                    to={`/dsa/${selectedProblem.id}`}
+                    className="text-xs text-accent hover:text-accent-hover"
+                  >
+                    Open full detail
+                  </Link>
+                  {selectedProblem.link && (
+                    <a
+                      href={selectedProblem.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-accent hover:text-accent-hover"
+                    >
+                      Problem link
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              {sheetItems.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                >
-                  <span className={item.done ? "line-through text-muted-foreground" : ""}>
-                    {item.title}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    onChange={() =>
-                      setSheetItems((prev) =>
-                        prev.map((entry) =>
-                          entry.id === item.id ? { ...entry, done: !entry.done } : entry
-                        )
-                      )
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!selectedProblem && (
+              <p className="text-sm text-muted-foreground">Choose a problem to start writing notes.</p>
+            )}
+            {selectedProblem && (
+              <>
+                <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
+                  {selectedProblem.statement || "Add the full statement when you have it handy."}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Workspace notes</p>
+                  <Textarea
+                    value={workspaceNotes}
+                    onChange={(event) =>
+                      setProblemNotes((prev) => ({
+                        ...prev,
+                        [selectedProblem.id]: event.target.value,
+                      }))
                     }
+                    placeholder="Capture key observations, pitfalls, or reminders."
+                    className="min-h-[120px]"
                   />
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Notes</p>
-            <Textarea
-              value={sheetNotes}
-              onChange={(event) => setSheetNotes(event.target.value)}
-              placeholder="Add notes for your sheet progress"
-              className="min-h-[180px]"
-            />
-          </div>
-        </CardContent>
-      </Card>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Approaches</p>
+                    <Button variant="outline" size="sm" onClick={handleAddApproach}>
+                      <Plus className="h-3 w-3" />
+                      Add approach
+                    </Button>
+                  </div>
+                  {approaches.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No approaches yet.</p>
+                  )}
+                  {approaches.map((approach) => (
+                    <div
+                      key={approach.id}
+                      className="rounded-md border border-border bg-surface p-3 space-y-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={approach.title}
+                          onChange={(event) => updateApproach(approach.id, { title: event.target.value })}
+                          placeholder="Approach title"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeApproach(approach.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={approach.notes}
+                        onChange={(event) => updateApproach(approach.id, { notes: event.target.value })}
+                        placeholder="Explain the approach and complexity tradeoffs."
+                        className="min-h-[100px]"
+                      />
+                      <Textarea
+                        value={approach.code}
+                        onChange={(event) => updateApproach(approach.id, { code: event.target.value })}
+                        placeholder="Code snippet"
+                        className="min-h-[120px] font-mono text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Saved notes</p>
+                  <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
+                    {selectedProblem.solution_notes || "No saved notes yet."}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
