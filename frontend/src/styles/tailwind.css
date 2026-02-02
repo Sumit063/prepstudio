@@ -26,7 +26,7 @@
   }
 
   * {
-    @apply border-border;
+    border-color: var(--color-border);
   }
 
   html,
@@ -36,11 +36,15 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: "Inter", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   code,
   pre {
-    @apply font-mono;
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
   }
 }
