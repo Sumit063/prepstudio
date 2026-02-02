@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card"
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import { StudySession, createStudySession, listStudySessions } from "../lib/api";
+import { createStudySession, listStudySessions } from "../lib/api";
+import type { StudySession } from "../lib/api";
 import { formatDate } from "../lib/format";
 
 const emptyForm = {

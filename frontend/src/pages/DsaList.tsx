@@ -15,13 +15,8 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import {
-  DSAProblem,
-  DSAAttempt,
-  createDsaProblem,
-  listDsaProblems,
-  listProblemAttempts,
-} from "../lib/api";
+import { createDsaProblem, listDsaProblems, listProblemAttempts } from "../lib/api";
+import type { DSAProblem, DSAAttempt } from "../lib/api";
 import { formatDate } from "../lib/format";
 
 const statusLabel = (status?: DSAAttempt["status"]) => {

@@ -14,13 +14,8 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
-import {
-  DesignTopic,
-  createDesignTopic,
-  deleteDesignTopic,
-  listDesignTopics,
-  updateDesignTopic,
-} from "../lib/api";
+import { createDesignTopic, deleteDesignTopic, listDesignTopics, updateDesignTopic } from "../lib/api";
+import type { DesignTopic } from "../lib/api";
 import { formatDate } from "../lib/format";
 
 const categories = [

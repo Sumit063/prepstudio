@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import { AnalyticsSummary, getAnalyticsSummary } from "../lib/api";
+import { getAnalyticsSummary } from "../lib/api";
+import type { AnalyticsSummary } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 
 const emptySummary: AnalyticsSummary = {

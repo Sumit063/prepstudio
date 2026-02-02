@@ -2,12 +2,8 @@
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import {
-  ReviewItem,
-  getDesignTopic,
-  getDsaProblem,
-  getDueReviews,
-} from "../lib/api";
+import { getDesignTopic, getDsaProblem, getDueReviews } from "../lib/api";
+import type { ReviewItem } from "../lib/api";
 import { formatDate } from "../lib/format";
 
 type ReviewDisplay = ReviewItem & {
