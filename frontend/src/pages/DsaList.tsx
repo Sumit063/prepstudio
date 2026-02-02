@@ -1,9 +1,8 @@
-﻿import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+﻿import { Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { Input, Textarea } from "../components/ui/Input";
-import { Select } from "../components/ui/Select";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
   DialogContent,
@@ -13,8 +12,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/Dialog";
+import { Input, Textarea } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import { dsaProblems } from "../data/mock";
+import {
+  DSAProblem,
+  DSAAttempt,
+  createDsaProblem,
+  listDsaProblems,
+  listProblemAttempts,
+} from "../lib/api";
+import { formatDate } from "../lib/format";
+
+const statusLabel = (status?: DSAAttempt["status"]) => {
+  if (status === "SOLVED") return "Solved";
+  if (status === "PARTIAL") return "Partial";
+  if (status === "UNSOLVED") return "Unsolved";
+  return "Unsolved";
+};
+
+const platformLabel = (platform: DSAProblem["platform"]) => {
+  if (platform === "LEETCODE") return "LeetCode";
+  if (platform === "GFG") return "GFG";
+  return "Custom";
+};
 
 const StatusBadge = ({ status }: { status: string }) => {
   const base = "rounded-md px-2 py-0.5 text-xs font-medium";
@@ -27,7 +48,135 @@ const StatusBadge = ({ status }: { status: string }) => {
   return <span className={`${base} bg-background text-muted-foreground border border-border`}>{status}</span>;
 };
 
+const emptyForm = {
+  title: "",
+  platform: "LEETCODE",
+  link: "",
+  difficulty: 3,
+  tags: "",
+  statement: "",
+  solution_notes: "",
+};
+
 export const DsaList = () => {
+  const [problems, setProblems] = useState<DSAProblem[]>([]);
+  const [statusMap, setStatusMap] = useState<Record<number, string>>({});
+  const [lastAttemptMap, setLastAttemptMap] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [difficultyFilter, setDifficultyFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params: {
+          search?: string;
+          difficulty_min?: number;
+          difficulty_max?: number;
+        } = {};
+        if (search) {
+          params.search = search;
+        }
+        if (difficultyFilter === "1-2") {
+          params.difficulty_min = 1;
+          params.difficulty_max = 2;
+        }
+        if (difficultyFilter === "3") {
+          params.difficulty_min = 3;
+          params.difficulty_max = 3;
+        }
+        if (difficultyFilter === "4-5") {
+          params.difficulty_min = 4;
+          params.difficulty_max = 5;
+        }
+
+        const data = await listDsaProblems(params);
+        if (!active) return;
+        setProblems(data.results);
+
+        const metaResults = await Promise.all(
+          data.results.map(async (problem) => {
+            try {
+              const attempts = await listProblemAttempts(problem.id);
+              const latest = attempts[0];
+              return {
+                id: problem.id,
+                status: statusLabel(latest?.status),
+                lastAttempt: latest?.created_at ? formatDate(latest.created_at) : "—",
+              };
+            } catch {
+              return { id: problem.id, status: "Unsolved", lastAttempt: "—" };
+            }
+          })
+        );
+
+        if (!active) return;
+        const statusLookup: Record<number, string> = {};
+        const lastAttemptLookup: Record<number, string> = {};
+        metaResults.forEach((item) => {
+          statusLookup[item.id] = item.status;
+          lastAttemptLookup[item.id] = item.lastAttempt;
+        });
+        setStatusMap(statusLookup);
+        setLastAttemptMap(lastAttemptLookup);
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Failed to load problems");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [search, difficultyFilter]);
+
+  const filteredProblems = useMemo(() => {
+    if (statusFilter === "All") {
+      return problems;
+    }
+    return problems.filter((problem) => statusMap[problem.id] === statusFilter);
+  }, [problems, statusFilter, statusMap]);
+
+  const handleCreate = async () => {
+    setSaving(true);
+    setCreateError(null);
+    try {
+      const payload: Partial<DSAProblem> = {
+        title: form.title,
+        platform: form.platform as DSAProblem["platform"],
+        link: form.link,
+        difficulty: Number(form.difficulty),
+        tags: form.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        statement: form.statement,
+        solution_notes: form.solution_notes,
+      };
+      await createDsaProblem(payload);
+      setForm(emptyForm);
+      const data = await listDsaProblems();
+      setProblems(data.results);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create problem");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -50,20 +199,32 @@ export const DsaList = () => {
             <div className="grid gap-3">
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Title</label>
-                <Input placeholder="Two Sum" />
+                <Input
+                  value={form.title}
+                  onChange={(event) => setForm({ ...form, title: event.target.value })}
+                  placeholder="Two Sum"
+                />
               </div>
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Platform</label>
-                <Select defaultValue="LeetCode">
-                  <option>LeetCode</option>
-                  <option>GFG</option>
-                  <option>Custom</option>
+                <Select
+                  value={form.platform}
+                  onChange={(event) => setForm({ ...form, platform: event.target.value })}
+                >
+                  <option value="LEETCODE">LeetCode</option>
+                  <option value="GFG">GFG</option>
+                  <option value="CUSTOM">Custom</option>
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1">
                   <label className="text-xs text-muted-foreground">Difficulty</label>
-                  <Select defaultValue="3">
+                  <Select
+                    value={String(form.difficulty)}
+                    onChange={(event) =>
+                      setForm({ ...form, difficulty: Number(event.target.value) })
+                    }
+                  >
                     <option value="1">1</option>
                     <option value="2">2</option>
                     <option value="3">3</option>
@@ -73,21 +234,50 @@ export const DsaList = () => {
                 </div>
                 <div className="grid gap-1">
                   <label className="text-xs text-muted-foreground">Tags</label>
-                  <Input placeholder="arrays, hashmap" />
+                  <Input
+                    value={form.tags}
+                    onChange={(event) => setForm({ ...form, tags: event.target.value })}
+                    placeholder="arrays, hashmap"
+                  />
                 </div>
               </div>
               <div className="grid gap-1">
                 <label className="text-xs text-muted-foreground">Statement</label>
-                <Textarea placeholder="Paste the problem statement." />
+                <Textarea
+                  value={form.statement}
+                  onChange={(event) => setForm({ ...form, statement: event.target.value })}
+                  placeholder="Paste the problem statement."
+                />
               </div>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Solution notes</label>
+                <Textarea
+                  value={form.solution_notes}
+                  onChange={(event) => setForm({ ...form, solution_notes: event.target.value })}
+                  placeholder="Your solution notes"
+                />
+              </div>
+              {createError && (
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {createError}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="ghost">Cancel</Button>
-              <Button>Save problem</Button>
+              <Button onClick={handleCreate} disabled={saving}>
+                {saving ? "Saving..." : "Save problem"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+          Error: {error}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -95,18 +285,25 @@ export const DsaList = () => {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">
-            <Input placeholder="Search problems" />
-            <Select defaultValue="All">
-              <option>All difficulties</option>
-              <option>1-2</option>
-              <option>3</option>
-              <option>4-5</option>
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search problems"
+            />
+            <Select
+              value={difficultyFilter}
+              onChange={(event) => setDifficultyFilter(event.target.value)}
+            >
+              <option value="All">All difficulties</option>
+              <option value="1-2">1-2</option>
+              <option value="3">3</option>
+              <option value="4-5">4-5</option>
             </Select>
-            <Select defaultValue="All">
-              <option>All status</option>
-              <option>Solved</option>
-              <option>Partial</option>
-              <option>Unsolved</option>
+            <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="All">All status</option>
+              <option value="Solved">Solved</option>
+              <option value="Partial">Partial</option>
+              <option value="Unsolved">Unsolved</option>
             </Select>
           </div>
         </CardContent>
@@ -130,7 +327,14 @@ export const DsaList = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {dsaProblems.map((problem) => (
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      Loading problems...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filteredProblems.map((problem) => (
                   <TableRow key={problem.id}>
                     <TableCell>
                       <Link
@@ -140,18 +344,27 @@ export const DsaList = () => {
                         {problem.title}
                       </Link>
                       <div className="text-xs text-muted-foreground">
-                        {problem.tags.join(" • ")}
+                        {problem.tags.join(" • ") || "No tags"}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{problem.platform}</TableCell>
+                    <TableCell className="text-muted-foreground">{platformLabel(problem.platform)}</TableCell>
                     <TableCell>{problem.difficulty}</TableCell>
                     <TableCell>
-                      <StatusBadge status={problem.status} />
+                      <StatusBadge status={statusMap[problem.id] ?? "Unsolved"} />
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{problem.attempts}</TableCell>
-                    <TableCell className="text-muted-foreground">{problem.lastAttempt}</TableCell>
+                    <TableCell className="text-muted-foreground">{problem.attempts_count}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {lastAttemptMap[problem.id] ?? formatDate(problem.updated_at)}
+                    </TableCell>
                   </TableRow>
                 ))}
+                {!loading && filteredProblems.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      No problems yet.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
