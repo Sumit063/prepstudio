@@ -1,16 +1,35 @@
-﻿const App = () => {
+﻿import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Header } from "../components/layout/Header";
+import { Sidebar } from "../components/layout/Sidebar";
+import { Dashboard } from "../pages/Dashboard";
+import { Design } from "../pages/Design";
+import { DsaDetail } from "../pages/DsaDetail";
+import { DsaList } from "../pages/DsaList";
+import { Reviews } from "../pages/Reviews";
+import { StudySessions } from "../pages/StudySessions";
+
+const App = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-5xl px-6 py-16">
-        <div className="space-y-3">
-          <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">PrepStudio</p>
-          <h1 className="text-3xl font-semibold">Scaffolding ready</h1>
-          <p className="text-base text-muted-foreground">
-            Phase 0 complete. UI shell and backend API land in the next phases.
-          </p>
+    <BrowserRouter>
+      <div className="min-h-screen bg-background text-foreground">
+        <Sidebar />
+        <div className="pl-64">
+          <Header />
+          <main className="px-6 py-6">
+            <div className="mx-auto w-full max-w-6xl">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/dsa" element={<DsaList />} />
+                <Route path="/dsa/:id" element={<DsaDetail />} />
+                <Route path="/design" element={<Design />} />
+                <Route path="/reviews" element={<Reviews />} />
+                <Route path="/sessions" element={<StudySessions />} />
+              </Routes>
+            </div>
+          </main>
         </div>
       </div>
-    </div>
+    </BrowserRouter>
   );
 };
 
