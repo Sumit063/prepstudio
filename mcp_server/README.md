@@ -25,6 +25,22 @@ Set these variables before running:
 python server.py
 ```
 
+## Quick demo (no MCP client required)
+This script calls the MCP tool functions directly (still hitting the API and logging audit events).
+
+```bash
+cd mcp_server
+set API_BASE_URL=http://127.0.0.1:8000
+set SERVICE_TOKEN=dev-service-token
+python demo_direct.py
+```
+
+To run a mutation (append a design note):
+```bash
+set RUN_MUTATIONS=1
+python demo_direct.py
+```
+
 ## Tools
 - `search_dsa_problems(query="", tags=[], difficulty_min=1, difficulty_max=5)`
   - Returns DSA problems matching query/tags and difficulty range.
