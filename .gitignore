@@ -1,0 +1,30 @@
+﻿# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+*.log
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+
+# Django
+*.mo
+*.pot
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
