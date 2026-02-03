@@ -191,12 +191,33 @@ export const DesignDetail = () => {
     return () => window.removeEventListener("resize", computeOffset);
   }, []);
 
+  const persistMeta = async (patch: Partial<DesignTopic>, fallback: { isImportant: boolean; isDone: boolean }) => {
+    if (!topic) return;
+    setActionError(null);
+    try {
+      const updated = await updateDesignTopic(topic.id, patch);
+      setTopic(updated);
+      setIsImportant(Boolean(updated.is_important));
+      setIsDone(Boolean(updated.is_done));
+    } catch (err) {
+      setIsImportant(fallback.isImportant);
+      setIsDone(fallback.isDone);
+      setActionError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  };
+
   const toggleImportant = () => {
-    setIsImportant((prev) => !prev);
+    const next = !isImportant;
+    const fallback = { isImportant, isDone };
+    setIsImportant(next);
+    persistMeta({ is_important: next }, fallback);
   };
 
   const toggleDone = () => {
-    setIsDone((prev) => !prev);
+    const next = !isDone;
+    const fallback = { isImportant, isDone };
+    setIsDone(next);
+    persistMeta({ is_done: next }, fallback);
   };
 
   const handleAddBucket = () => {
