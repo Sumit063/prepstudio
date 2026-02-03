@@ -5,6 +5,7 @@ from .models import (
     DesignTopic,
     DSAAttempt,
     DSAProblem,
+    GoogleCalendarAccount,
     ReviewItem,
     StudySession,
     Tag,
@@ -58,3 +59,10 @@ class AuditEventAdmin(admin.ModelAdmin):
     list_display = ("source", "tool_name", "owner", "status", "created_at")
     list_filter = ("owner", "source", "status")
     search_fields = ("tool_name", "owner__username")
+
+
+@admin.register(GoogleCalendarAccount)
+class GoogleCalendarAccountAdmin(admin.ModelAdmin):
+    list_display = ("owner", "email", "calendar_id", "updated_at")
+    list_filter = ("calendar_id",)
+    search_fields = ("owner__username", "email")

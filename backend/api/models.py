@@ -109,6 +109,10 @@ class StudySession(models.Model):
     duration_minutes = models.PositiveIntegerField()
     focus_area = models.CharField(max_length=20, choices=FocusArea.choices, default=FocusArea.MIXED)
     notes = models.TextField(blank=True)
+    calendar_event_id = models.CharField(max_length=255, blank=True)
+    calendar_event_link = models.URLField(blank=True)
+    calendar_error = models.TextField(blank=True)
+    calendar_synced_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
@@ -153,3 +157,20 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.source} {self.tool_name} ({self.status})"
+
+
+class GoogleCalendarAccount(models.Model):
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="google_calendar"
+    )
+    email = models.EmailField(blank=True)
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField()
+    token_expiry = models.DateTimeField(blank=True, null=True)
+    scope = models.TextField(blank=True)
+    calendar_id = models.CharField(max_length=128, default="primary")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.owner} Google Calendar"

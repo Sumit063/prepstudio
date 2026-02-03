@@ -147,10 +147,38 @@ class DesignTopicSerializer(serializers.ModelSerializer):
 
 
 class StudySessionSerializer(serializers.ModelSerializer):
+    sync_to_calendar = serializers.BooleanField(write_only=True, required=False)
+    start_time = serializers.CharField(write_only=True, required=False)
+
     class Meta:
         model = StudySession
-        fields = ["id", "date", "duration_minutes", "focus_area", "notes", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = [
+            "id",
+            "date",
+            "duration_minutes",
+            "focus_area",
+            "notes",
+            "sync_to_calendar",
+            "start_time",
+            "calendar_event_id",
+            "calendar_event_link",
+            "calendar_error",
+            "calendar_synced_at",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "calendar_event_id",
+            "calendar_event_link",
+            "calendar_error",
+            "calendar_synced_at",
+            "created_at",
+        ]
+
+    def create(self, validated_data):
+        validated_data.pop("sync_to_calendar", None)
+        validated_data.pop("start_time", None)
+        return super().create(validated_data)
 
 
 class ReviewItemSerializer(serializers.ModelSerializer):

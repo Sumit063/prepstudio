@@ -76,7 +76,16 @@ export type StudySession = {
   duration_minutes: number;
   focus_area: "DSA" | "DESIGN" | "MIXED";
   notes: string;
+  calendar_event_id: string;
+  calendar_event_link: string;
+  calendar_error: string;
+  calendar_synced_at: string | null;
   created_at: string;
+};
+
+export type StudySessionInput = Partial<StudySession> & {
+  sync_to_calendar?: boolean;
+  start_time?: string;
 };
 
 export type ReviewItem = {
@@ -99,6 +108,12 @@ export type AnalyticsSummary = {
     detail: string;
     occurred_at: string;
   }>;
+};
+
+export type CalendarStatus = {
+  connected: boolean;
+  email?: string;
+  calendar_id?: string;
 };
 
 const apiFetch = async <T>(path: string, options: ApiOptions = {}): Promise<T> => {
@@ -192,7 +207,7 @@ export const deleteDesignTopic = (id: number) =>
 export const listStudySessions = () =>
   apiFetch<Paginated<StudySession>>("/api/study/sessions/");
 
-export const createStudySession = (data: Partial<StudySession>) =>
+export const createStudySession = (data: StudySessionInput) =>
   apiFetch<StudySession>("/api/study/sessions/", { method: "POST", data });
 
 export const getDueReviews = (days = 0) =>
@@ -233,3 +248,12 @@ export const loginWithGoogle = (credential: string) =>
     method: "POST",
     data: { credential },
   });
+
+export const getCalendarStatus = () =>
+  apiFetch<CalendarStatus>("/api/calendar/status");
+
+export const getCalendarConnectUrl = () =>
+  apiFetch<{ auth_url: string }>("/api/calendar/connect");
+
+export const disconnectCalendar = () =>
+  apiFetch<{ detail: string }>("/api/calendar/disconnect", { method: "POST" });
