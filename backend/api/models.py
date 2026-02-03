@@ -34,6 +34,11 @@ class DSAProblem(models.Model):
     tags = models.ManyToManyField(Tag, related_name="dsa_problems", blank=True)
     statement = models.TextField(blank=True)
     solution_notes = models.TextField(blank=True)
+    workspace_notes = models.TextField(blank=True)
+    approaches_json = models.JSONField(default=list, blank=True)
+    bucket_labels = models.JSONField(default=list, blank=True)
+    is_important = models.BooleanField(default=False)
+    is_done = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -80,6 +85,10 @@ class DesignTopic(models.Model):
     notes_markdown = models.TextField(blank=True)
     tradeoffs = models.TextField(blank=True)
     references_json = models.JSONField(default=list, blank=True)
+    bucket_labels = models.JSONField(default=list, blank=True)
+    is_important = models.BooleanField(default=False)
+    is_done = models.BooleanField(default=False)
+    canvas_json = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

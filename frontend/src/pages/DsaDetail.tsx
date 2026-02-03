@@ -72,6 +72,7 @@ export const DsaDetail = () => {
   const [editForm, setEditForm] = useState(defaultEditForm);
   const [savingEdit, setSavingEdit] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -151,6 +152,7 @@ export const DsaDetail = () => {
         solution_notes: editForm.solution_notes,
       });
       setProblem(updated);
+      setEditOpen(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to update problem");
     } finally {
@@ -217,7 +219,7 @@ export const DsaDetail = () => {
           Back to DSA
         </Link>
         <div className="flex items-center gap-2">
-          <Dialog>
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">Edit problem</Button>
             </DialogTrigger>

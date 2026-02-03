@@ -1,8 +1,20 @@
 ﻿import { useEffect, useState } from "react";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/Dialog";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import { getDesignTopic, getDsaProblem, getDueReviews } from "../lib/api";
+import { createReviewItem, getDesignTopic, getDsaProblem, getDueReviews } from "../lib/api";
 import type { ReviewItem } from "../lib/api";
 import { formatDate } from "../lib/format";
 
@@ -18,6 +30,46 @@ export const Reviews = () => {
   const [reviews, setReviews] = useState<ReviewDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    item_type: "DSA_PROBLEM",
+    ref_id: "",
+    next_review_at: "",
+    interval_days: 1,
+  });
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  const loadReviews = async () => {
+    const data = await getDueReviews(0);
+    const enriched = await Promise.all(
+      data.map(async (item) => {
+        let title = `Item #${item.ref_id}`;
+        if (item.item_type === "DSA_PROBLEM") {
+          try {
+            const problem = await getDsaProblem(item.ref_id);
+            title = problem.title;
+          } catch {
+            title = `DSA #${item.ref_id}`;
+          }
+        } else {
+          try {
+            const topic = await getDesignTopic(item.ref_id);
+            title = topic.title;
+          } catch {
+            title = `Design #${item.ref_id}`;
+          }
+        }
+
+        const dueDate = new Date(item.next_review_at);
+        const diff = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const dueLabel = diff <= 0 ? "Today" : `${diff}d`;
+
+        return { ...item, title, dueLabel };
+      })
+    );
+    setReviews(enriched);
+  };
 
   useEffect(() => {
     let active = true;
@@ -25,35 +77,8 @@ export const Reviews = () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await getDueReviews(0);
-        const enriched = await Promise.all(
-          data.map(async (item) => {
-            let title = `Item #${item.ref_id}`;
-            if (item.item_type === "DSA_PROBLEM") {
-              try {
-                const problem = await getDsaProblem(item.ref_id);
-                title = problem.title;
-              } catch {
-                title = `DSA #${item.ref_id}`;
-              }
-            } else {
-              try {
-                const topic = await getDesignTopic(item.ref_id);
-                title = topic.title;
-              } catch {
-                title = `Design #${item.ref_id}`;
-              }
-            }
-
-            const dueDate = new Date(item.next_review_at);
-            const diff = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            const dueLabel = diff <= 0 ? "Today" : `${diff}d`;
-
-            return { ...item, title, dueLabel };
-          })
-        );
         if (!active) return;
-        setReviews(enriched);
+        await loadReviews();
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Failed to load reviews");
@@ -70,6 +95,30 @@ export const Reviews = () => {
     };
   }, []);
 
+  const handleSchedule = async () => {
+    setScheduling(true);
+    setScheduleError(null);
+    try {
+      const nextReview =
+        scheduleForm.next_review_at && scheduleForm.next_review_at.length > 0
+          ? new Date(scheduleForm.next_review_at).toISOString()
+          : new Date().toISOString();
+      await createReviewItem({
+        item_type: scheduleForm.item_type as ReviewItem["item_type"],
+        ref_id: Number(scheduleForm.ref_id),
+        next_review_at: nextReview,
+        interval_days: Number(scheduleForm.interval_days) || 1,
+      });
+      setScheduleForm({ item_type: "DSA_PROBLEM", ref_id: "", next_review_at: "", interval_days: 1 });
+      setScheduleOpen(false);
+      await loadReviews();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : "Failed to schedule review");
+    } finally {
+      setScheduling(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -77,7 +126,78 @@ export const Reviews = () => {
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Reviews</p>
           <h1 className="text-2xl font-semibold">Due reviews</h1>
         </div>
-        <Button variant="outline">Schedule next</Button>
+        <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">Schedule next</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Schedule review</DialogTitle>
+              <DialogDescription>Plan the next review for a problem or topic.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Type</label>
+                <Select
+                  value={scheduleForm.item_type}
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({ ...prev, item_type: event.target.value }))
+                  }
+                >
+                  <option value="DSA_PROBLEM">DSA problem</option>
+                  <option value="DESIGN_TOPIC">Design topic</option>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Reference ID</label>
+                <Input
+                  type="number"
+                  value={scheduleForm.ref_id}
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({ ...prev, ref_id: event.target.value }))
+                  }
+                  placeholder="e.g. 12"
+                />
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Next review at</label>
+                <Input
+                  type="datetime-local"
+                  value={scheduleForm.next_review_at}
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({ ...prev, next_review_at: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground">Interval (days)</label>
+                <Input
+                  type="number"
+                  value={scheduleForm.interval_days}
+                  onChange={(event) =>
+                    setScheduleForm((prev) => ({
+                      ...prev,
+                      interval_days: Number(event.target.value),
+                    }))
+                  }
+                />
+              </div>
+              {scheduleError && (
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {scheduleError}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="ghost">Cancel</Button>
+              </DialogClose>
+              <Button onClick={handleSchedule} disabled={scheduling}>
+                {scheduling ? "Saving..." : "Save review"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {error && (

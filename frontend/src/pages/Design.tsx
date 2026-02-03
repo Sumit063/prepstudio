@@ -15,7 +15,7 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
-import { createDesignTopic, listDesignTopics } from "../lib/api";
+import { createDesignTopic, listDesignTopics, updateDesignTopic } from "../lib/api";
 import type { DesignTopic } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
@@ -32,26 +32,8 @@ const categories = [
 
 type CategoryValue = (typeof categories)[number]["value"];
 
-type SheetMeta = Record<number, { important: boolean; done: boolean; buckets: string[] }>;
-
 const badgeBase =
   "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
-
-const readSheetMeta = (): SheetMeta => {
-  if (typeof window === "undefined") return {};
-  try {
-    const stored = window.localStorage.getItem("designSheetMeta");
-    if (!stored) return {};
-    return JSON.parse(stored) as SheetMeta;
-  } catch {
-    return {};
-  }
-};
-
-const writeSheetMeta = (meta: SheetMeta) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("designSheetMeta", JSON.stringify(meta));
-};
 
 const emptyForm = {
   title: "",
@@ -70,7 +52,7 @@ export const Design = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [sheetMeta, setSheetMeta] = useState<SheetMeta>(() => readSheetMeta());
+  const [createOpen, setCreateOpen] = useState(false);
   const [importantFilter, setImportantFilter] = useState("All");
   const [bucketFilter, setBucketFilter] = useState("All");
 
@@ -99,29 +81,13 @@ export const Design = () => {
     };
   }, []);
 
-  useEffect(() => {
-    setSheetMeta((prev) => {
-      const next = { ...prev };
-      topics.forEach((topic) => {
-        if (!next[topic.id]) {
-          next[topic.id] = { important: false, done: false, buckets: [] };
-        }
-      });
-      return next;
-    });
-  }, [topics]);
-
-  useEffect(() => {
-    writeSheetMeta(sheetMeta);
-  }, [sheetMeta]);
-
   const bucketOptions = useMemo(() => {
     const all = new Set<string>();
-    Object.values(sheetMeta).forEach((meta) => {
-      meta.buckets.forEach((bucket) => all.add(bucket));
+    topics.forEach((topic) => {
+      (topic.bucket_labels ?? []).forEach((bucket) => all.add(bucket));
     });
     return Array.from(all).sort();
-  }, [sheetMeta]);
+  }, [topics]);
 
   const topicsByCategory = useMemo(() => {
     return categories.reduce((acc, category) => {
@@ -134,15 +100,15 @@ export const Design = () => {
     return categories.reduce((acc, category) => {
       let list = topicsByCategory[category.value] ?? [];
       if (importantFilter === "Important") {
-        list = list.filter((topic) => sheetMeta[topic.id]?.important);
+        list = list.filter((topic) => topic.is_important);
       }
       if (bucketFilter !== "All") {
-        list = list.filter((topic) => sheetMeta[topic.id]?.buckets.includes(bucketFilter));
+        list = list.filter((topic) => (topic.bucket_labels ?? []).includes(bucketFilter));
       }
       acc[category.value] = list;
       return acc;
     }, {} as Record<CategoryValue, DesignTopic[]>);
-  }, [topicsByCategory, importantFilter, bucketFilter, sheetMeta]);
+  }, [topicsByCategory, importantFilter, bucketFilter]);
 
   const tracker = useMemo(() => {
     const total = topics.length;
@@ -168,6 +134,7 @@ export const Design = () => {
       };
       await createDesignTopic(payload);
       setForm(emptyForm);
+      setCreateOpen(false);
       const data = await listDesignTopics();
       setTopics(data.results);
     } catch (err) {
@@ -177,18 +144,35 @@ export const Design = () => {
     }
   };
 
+  const updateTopic = (topicId: number, patch: Partial<DesignTopic>) => {
+    setTopics((prev) =>
+      prev.map((topic) => (topic.id === topicId ? { ...topic, ...patch } : topic))
+    );
+  };
+
+  const persistTopicMeta = async (topicId: number, patch: Partial<DesignTopic>) => {
+    const current = topics.find((item) => item.id === topicId);
+    if (!current) return;
+    updateTopic(topicId, patch);
+    try {
+      const updated = await updateDesignTopic(topicId, patch);
+      updateTopic(topicId, updated);
+    } catch (err) {
+      updateTopic(topicId, current);
+      setActionError(err instanceof Error ? err.message : "Failed to save changes");
+    }
+  };
+
   const toggleImportant = (topicId: number) => {
-    setSheetMeta((prev) => {
-      const current = prev[topicId] ?? { important: false, done: false, buckets: [] };
-      return { ...prev, [topicId]: { ...current, important: !current.important } };
-    });
+    const topic = topics.find((item) => item.id === topicId);
+    if (!topic) return;
+    persistTopicMeta(topicId, { is_important: !topic.is_important });
   };
 
   const toggleDone = (topicId: number) => {
-    setSheetMeta((prev) => {
-      const current = prev[topicId] ?? { important: false, done: false, buckets: [] };
-      return { ...prev, [topicId]: { ...current, done: !current.done } };
-    });
+    const topic = topics.find((item) => item.id === topicId);
+    if (!topic) return;
+    persistTopicMeta(topicId, { is_done: !topic.is_done });
   };
 
   return (
@@ -196,6 +180,11 @@ export const Design = () => {
       {error && (
         <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
           Error: {error}
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
+          {actionError}
         </div>
       )}
       <div className="rounded-md border border-border bg-surface px-2 py-2">
@@ -235,7 +224,7 @@ export const Design = () => {
                 </option>
               ))}
             </Select>
-            <Dialog>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 w-8 p-0" aria-label="Add topic">
                   <Plus className="h-4 w-4" />
@@ -331,7 +320,6 @@ export const Design = () => {
               <div className="space-y-2 lg:flex-1 lg:overflow-y-auto lg:pr-2">
                 {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
                 {(filteredTopicsByCategory[category.value] ?? []).map((topic) => {
-                  const meta = sheetMeta[topic.id] ?? { important: false, done: false, buckets: [] };
                   return (
                     <div
                       key={topic.id}
@@ -349,17 +337,26 @@ export const Design = () => {
                       <div className="flex items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={meta.done}
+                          checked={topic.is_done}
                           onChange={(event) => {
                             event.stopPropagation();
                             toggleDone(topic.id);
                           }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
                           className="mt-1"
                         />
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-sm font-medium text-foreground">{topic.title}</div>
-                            {meta.done && (
+                            <div
+                              className={cn(
+                                "text-sm font-medium text-foreground",
+                                topic.is_done && "line-through text-muted-foreground"
+                              )}
+                            >
+                              {topic.title}
+                            </div>
+                            {topic.is_done && (
                               <span
                                 className={cn(
                                   badgeBase,
@@ -369,7 +366,7 @@ export const Design = () => {
                                 Done
                               </span>
                             )}
-                            {meta.important && (
+                            {topic.is_important && (
                               <span
                                 className={cn(
                                   badgeBase,
@@ -384,7 +381,7 @@ export const Design = () => {
                             Updated {formatDate(topic.updated_at)}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {meta.buckets.map((bucket) => (
+                            {(topic.bucket_labels ?? []).map((bucket) => (
                               <span
                                 key={bucket}
                                 className={cn(
@@ -418,7 +415,7 @@ export const Design = () => {
                         <Star
                           className={cn(
                             "h-4 w-4",
-                            meta.important ? "text-amber-500 fill-amber-500" : "text-muted-foreground"
+                            topic.is_important ? "text-amber-500 fill-amber-500" : "text-muted-foreground"
                           )}
                         />
                       </button>

@@ -117,6 +117,9 @@ export const DsaList = () => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
   const [approachMap, setApproachMap] = useState<Record<number, Approach[]>>({});
   const [problemNotes, setProblemNotes] = useState<Record<number, string>>({});
@@ -204,27 +207,42 @@ export const DsaList = () => {
     setImportantMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
-        if (next[problem.id] === undefined) {
-          next[problem.id] = false;
-        }
+        next[problem.id] = problem.is_important ?? false;
       });
       return next;
     });
     setDoneMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
-        if (next[problem.id] === undefined) {
-          next[problem.id] = false;
-        }
+        next[problem.id] = problem.is_done ?? false;
       });
       return next;
     });
     setBucketMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
-        if (!next[problem.id]) {
-          next[problem.id] = [];
-        }
+        next[problem.id] = problem.bucket_labels ?? [];
+      });
+      return next;
+    });
+    setProblemNotes((prev) => {
+      const next = { ...prev };
+      problems.forEach((problem) => {
+        next[problem.id] = problem.workspace_notes ?? "";
+      });
+      return next;
+    });
+    setApproachMap((prev) => {
+      const next = { ...prev };
+      problems.forEach((problem) => {
+        const approaches = Array.isArray(problem.approaches_json)
+          ? problem.approaches_json.map((item, index) => ({
+              id: typeof item.id === "number" ? item.id : Date.now() + index,
+              title: item.title ?? "",
+              notes: item.notes ?? "",
+            }))
+          : [];
+        next[problem.id] = approaches;
       });
       return next;
     });
@@ -323,6 +341,7 @@ export const DsaList = () => {
       };
       await createDsaProblem(payload);
       setForm(emptyForm);
+      setCreateOpen(false);
       const data = await listDsaProblems();
       setProblems(data.results);
     } catch (err) {
@@ -338,6 +357,32 @@ export const DsaList = () => {
     setProblems((prev) =>
       prev.map((problem) => (problem.id === updated.id ? updated : problem))
     );
+  };
+
+  const handleSaveDetail = async () => {
+    if (!selectedProblem) return;
+    setDetailSaving(true);
+    setDetailError(null);
+    try {
+      const updated = await updateDsaProblem(selectedProblem.id, {
+        workspace_notes: workspaceNotes,
+        approaches_json: approaches.map((approach) => ({
+          id: approach.id,
+          title: approach.title,
+          notes: approach.notes,
+        })),
+        bucket_labels: selectedBuckets,
+        is_important: selectedImportant,
+        is_done: doneMap[selectedProblem.id] ?? false,
+      });
+      setProblems((prev) =>
+        prev.map((problem) => (problem.id === updated.id ? updated : problem))
+      );
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Failed to save details");
+    } finally {
+      setDetailSaving(false);
+    }
   };
 
   const handleAddApproach = () => {
@@ -382,8 +427,18 @@ export const DsaList = () => {
     setImportantMap((prev) => ({ ...prev, [problemId]: !prev[problemId] }));
   };
 
-  const toggleDone = (problemId: number) => {
-    setDoneMap((prev) => ({ ...prev, [problemId]: !prev[problemId] }));
+  const toggleDone = async (problemId: number) => {
+    const nextValue = !doneMap[problemId];
+    setDoneMap((prev) => ({ ...prev, [problemId]: nextValue }));
+    try {
+      const updated = await updateDsaProblem(problemId, { is_done: nextValue });
+      setProblems((prev) =>
+        prev.map((problem) => (problem.id === updated.id ? updated : problem))
+      );
+    } catch (err) {
+      setDoneMap((prev) => ({ ...prev, [problemId]: !nextValue }));
+      setDetailError(err instanceof Error ? err.message : "Failed to update done state");
+    }
   };
 
   const handleAddBucket = () => {
@@ -480,7 +535,7 @@ export const DsaList = () => {
                 </option>
               ))}
             </Select>
-            <Dialog>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
@@ -547,6 +602,14 @@ export const DsaList = () => {
                       value={form.statement}
                       onChange={(event) => setForm({ ...form, statement: event.target.value })}
                       placeholder="Paste the problem statement."
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Question link</label>
+                    <Input
+                      value={form.link}
+                      onChange={(event) => setForm({ ...form, link: event.target.value })}
+                      placeholder="https://leetcode.com/..."
                     />
                   </div>
                   <div className="grid gap-1">
@@ -622,7 +685,14 @@ export const DsaList = () => {
                         aria-label="Mark done"
                       />
                       <div className="space-y-1">
-                        <div className="text-sm font-medium text-foreground">{problem.title}</div>
+                        <div
+                          className={cn(
+                            "text-sm font-medium text-foreground",
+                            isDone && "line-through text-muted-foreground"
+                          )}
+                        >
+                          {problem.title}
+                        </div>
                       </div>
                     </div>
                     <button
@@ -697,8 +767,16 @@ export const DsaList = () => {
                       <Star className={cn("h-3.5 w-3.5", selectedImportant && "fill-white")} />
                       {selectedImportant ? "Important" : "Mark important"}
                     </Button>
+                    <Button size="sm" onClick={handleSaveDetail} disabled={detailSaving}>
+                      {detailSaving ? "Saving..." : "Save notes"}
+                    </Button>
                   </div>
                 </div>
+                {detailError && (
+                  <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    {detailError}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <Link to={`/dsa/${selectedProblem.id}`} className="text-accent hover:text-accent-hover">
                     Open full detail

@@ -7,11 +7,25 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./ui/Button";
 import { cn } from "../lib/cn";
 
-const mockScene = (): ExcalidrawInitialDataState => ({
+export type DesignCanvasScene = {
+  elements?: readonly ExcalidrawElement[];
+  appState?: AppState;
+  files?: BinaryFiles;
+};
+
+// Defaults only for first-load scenes (no saved data yet).
+const DEFAULT_APP_STATE: Partial<AppState> = {
+  theme: "dark",
+  viewBackgroundColor: "#ffffff",
+  currentItemStrokeColor: "#000000",
+  currentItemBackgroundColor: "transparent",
+};
+
+const createMockScene = (): ExcalidrawInitialDataState => ({
   elements: convertToExcalidrawElements([
     {
       type: "rectangle",
@@ -28,28 +42,34 @@ const mockScene = (): ExcalidrawInitialDataState => ({
       y: 320,
     },
   ]),
-  appState: {
-    viewBackgroundColor: "transparent",
-    theme: "light",
-  },
+  appState: DEFAULT_APP_STATE as AppState,
   files: {},
 });
 
-export const SystemDesignCanvas = () => {
-  const initialData = useMemo(() => mockScene(), []);
-  const [elements, setElements] = useState<readonly ExcalidrawElement[]>(
-    initialData.elements ?? []
-  );
-  const [appState, setAppState] = useState<AppState>(
-    (initialData.appState ?? {}) as AppState
-  );
-  const [files, setFiles] = useState<BinaryFiles>((initialData.files ?? {}) as BinaryFiles);
+type SystemDesignCanvasProps = {
+  initialScene?: DesignCanvasScene | null;
+  onSceneChange?: (scene: DesignCanvasScene) => void;
+};
+
+const buildInitialScene = (scene: DesignCanvasScene | null | undefined) => {
+  if (!scene) return createMockScene();
+  return {
+    elements: scene.elements ?? [],
+    appState: scene.appState ?? (DEFAULT_APP_STATE as AppState),
+    files: scene.files ?? {},
+  };
+};
+
+export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesignCanvasProps) => {
   const [fullscreen, setFullscreen] = useState(false);
   const [headerOffset, setHeaderOffset] = useState(96);
-  const sceneSnapshot = useMemo(
-    () => ({ elements, appState, files }),
-    [elements, appState, files]
-  );
+  const persistTimerRef = useRef<number | null>(null);
+  const lastSceneRef = useRef<DesignCanvasScene | null>(null);
+  const initialDataRef = useRef<ExcalidrawInitialDataState | null>(null);
+  if (!initialDataRef.current) {
+    initialDataRef.current = buildInitialScene(initialScene);
+  }
+  const initialData = initialDataRef.current;
 
   useEffect(() => {
     const computeOffset = () => {
@@ -83,18 +103,33 @@ export const SystemDesignCanvas = () => {
     };
   }, [fullscreen]);
 
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleChange = useCallback(
     (nextElements: readonly ExcalidrawElement[], nextAppState: AppState, nextFiles: BinaryFiles) => {
-      setElements(nextElements);
-      setAppState({
-        ...nextAppState,
-        viewBackgroundColor: "#ffffff",
-        theme: "light",
-      });
-      setFiles(nextFiles);
-      // TODO: persist { elements: nextElements, appState: nextAppState, files: nextFiles }.
+      const normalizedState: DesignCanvasScene = {
+        elements: nextElements,
+        appState: nextAppState,
+        files: nextFiles,
+      };
+
+      lastSceneRef.current = normalizedState;
+      if (persistTimerRef.current) {
+        window.clearTimeout(persistTimerRef.current);
+      }
+      persistTimerRef.current = window.setTimeout(() => {
+        if (lastSceneRef.current) {
+          onSceneChange?.(lastSceneRef.current);
+        }
+      }, 300);
     },
-    []
+    [onSceneChange]
   );
 
   const containerHeight = fullscreen
@@ -104,32 +139,34 @@ export const SystemDesignCanvas = () => {
   const canvas = (
     <div
       className={cn(
-        "relative w-full border border-border bg-white dark:bg-white",
-        "rounded-none shadow-none"
+        "relative w-full border border-border rounded-none shadow-none",
+        "bg-background"
       )}
       style={{ height: containerHeight }}
     >
-      <div className="absolute left-3 top-3 z-10 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-        Design canvas
-      </div>
-      <div className="absolute bottom-3 right-3 z-10">
+      <div className="absolute bottom-[38px] right-3 z-10">
         <Button variant="outline" size="sm" onClick={() => setFullscreen((prev) => !prev)}>
           {fullscreen ? "Exit fullscreen" : "Fullscreen"}
         </Button>
       </div>
-      <div className="h-full w-full border border-border bg-white dark:bg-white">
-        <Excalidraw initialData={initialData} onChange={handleChange} />
+      <div className="h-full w-full border border-border bg-background">
+        <Excalidraw
+          initialData={initialData}
+          onChange={handleChange}
+          UIOptions={{
+            canvasActions: {
+              changeViewBackgroundColor: true,
+              toggleTheme: true,
+            },
+          }}
+        />
       </div>
-      {/* Persisting to backend will plug into this state later. */}
-      <span className="sr-only">
-        {sceneSnapshot.elements.length} elements, {Object.keys(sceneSnapshot.files).length} files
-      </span>
     </div>
   );
 
   if (fullscreen && typeof document !== "undefined") {
     return createPortal(
-      <div className="fixed inset-0 z-50 bg-white dark:bg-white">
+      <div className="fixed inset-0 z-50">
         {canvas}
       </div>,
       document.body

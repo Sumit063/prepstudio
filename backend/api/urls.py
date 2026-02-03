@@ -11,6 +11,7 @@ from .views import (
     GoogleAuthView,
     LogoutView,
     RegisterView,
+    ReviewItemViewSet,
     StudySessionViewSet,
 )
 
@@ -18,6 +19,7 @@ router = DefaultRouter()
 router.register(r"dsa/problems", DSAProblemViewSet, basename="dsa-problem")
 router.register(r"design/topics", DesignTopicViewSet, basename="design-topic")
 router.register(r"study/sessions", StudySessionViewSet, basename="study-session")
+router.register(r"reviews", ReviewItemViewSet, basename="review-item")
 
 urlpatterns = [
     path("", include(router.urls)),
