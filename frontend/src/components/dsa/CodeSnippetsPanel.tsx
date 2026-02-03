@@ -2,7 +2,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { java } from "@codemirror/lang-java";
 import { python } from "@codemirror/lang-python";
 import { cpp } from "@codemirror/lang-cpp";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -219,9 +219,19 @@ export const CodeSnippetsPanel = ({ source, onPersist }: CodeSnippetsPanelProps)
       {visibleSnippets.map((snippet, index) => (
         <div
           key={snippet.id}
-          className="w-full overflow-hidden rounded-md border border-border bg-background"
+          className={cn(
+            "w-full overflow-hidden rounded-md border",
+            "border-border bg-background",
+            "dark:border-[#2d2d2d] dark:bg-[#1e1e1e]"
+          )}
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2",
+              "border-border bg-muted/30",
+              "dark:border-[#2d2d2d] dark:bg-[#1b1b1b]"
+            )}
+          >
             {editing ? (
               <div className="flex flex-wrap items-center gap-2">
                 <Input
@@ -273,7 +283,7 @@ export const CodeSnippetsPanel = ({ source, onPersist }: CodeSnippetsPanelProps)
               value={snippet.code}
               editable={editing}
               readOnly={!editing}
-              theme={isDark ? oneDark : "light"}
+              theme={isDark ? vscodeDark : vscodeLight}
               extensions={[getLanguageExtension(snippet.language)]}
               basicSetup={{
                 lineNumbers: true,
@@ -287,7 +297,12 @@ export const CodeSnippetsPanel = ({ source, onPersist }: CodeSnippetsPanelProps)
               width="100%"
               minHeight="140px"
               maxHeight="50vh"
-              className="w-full text-xs font-mono [&_.cm-editor]:rounded-none [&_.cm-gutters]:bg-background [&_.cm-gutters]:text-muted-foreground [&_.cm-content]:py-2"
+              className={cn(
+                "w-full text-xs font-mono [&_.cm-editor]:rounded-none",
+                "[&_.cm-content]:py-2 [&_.cm-content]:leading-5",
+                "dark:[&_.cm-gutters]:bg-[#1e1e1e] dark:[&_.cm-gutters]:text-[#9ca3af]",
+                "dark:[&_.cm-content]:text-[#d4d4d4]"
+              )}
             />
           </div>
         </div>

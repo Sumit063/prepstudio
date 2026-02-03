@@ -1,8 +1,11 @@
 import { Link2, Plus, Star, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { useCreateBlockNote } from "@blocknote/react";
+import { BlockNoteView } from "@blocknote/mantine";
+import type { PartialBlock } from "@blocknote/core";
+import "@blocknote/core/fonts/inter.css";
+import "@blocknote/mantine/style.css";
 import { Button } from "../components/ui/Button";
 import {
   Dialog,
@@ -15,6 +18,7 @@ import {
   DialogTrigger,
 } from "../components/ui/Dialog";
 import { SystemDesignCanvas } from "../components/SystemDesignCanvas";
+import type { DesignCanvasScene } from "../components/SystemDesignCanvas";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { deleteDesignTopic, getDesignTopic, updateDesignTopic } from "../lib/api";
@@ -40,26 +44,45 @@ type ReferenceItem = {
   url: string;
 };
 
-type SheetMeta = Record<number, { important: boolean; done: boolean; buckets: string[] }>;
+const emptyNoteBlocks: PartialBlock[] = [{ type: "paragraph", content: "" }];
+
+const toNoteBlocks = (raw?: string | null): PartialBlock[] => {
+  if (!raw) return emptyNoteBlocks;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as PartialBlock[];
+    }
+  } catch {
+    // fallback to plain text below
+  }
+  const text = raw.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").trim();
+  if (!text) return emptyNoteBlocks;
+  return [{ type: "paragraph", content: text }];
+};
+
+const useIsDark = () => {
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDark(root.classList.contains("dark"));
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+};
 
 const badgeBase =
   "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
-
-const readSheetMeta = (): SheetMeta => {
-  if (typeof window === "undefined") return {};
-  try {
-    const stored = window.localStorage.getItem("designSheetMeta");
-    if (!stored) return {};
-    return JSON.parse(stored) as SheetMeta;
-  } catch {
-    return {};
-  }
-};
-
-const writeSheetMeta = (meta: SheetMeta) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("designSheetMeta", JSON.stringify(meta));
-};
 
 const emptyForm = {
   title: "",
@@ -77,29 +100,25 @@ export const DesignDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [tradeoffsDraft, setTradeoffsDraft] = useState("");
-  const [notesDraft, setNotesDraft] = useState("");
+  const [notesDraft, setNotesDraft] = useState(() => JSON.stringify(emptyNoteBlocks));
+  const [noteBlocks, setNoteBlocks] = useState<PartialBlock[]>(emptyNoteBlocks);
   const [references, setReferences] = useState<ReferenceItem[]>([]);
   const [referenceDraft, setReferenceDraft] = useState({ label: "", url: "" });
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [sheetMeta, setSheetMeta] = useState<SheetMeta>(() => readSheetMeta());
+  const [bucketLabels, setBucketLabels] = useState<string[]>([]);
+  const [isImportant, setIsImportant] = useState(false);
+  const [isDone, setIsDone] = useState(false);
+  const [canvasDraft, setCanvasDraft] = useState<DesignCanvasScene | null>(null);
   const [bucketInput, setBucketInput] = useState("");
+  const [editorOffset, setEditorOffset] = useState(96);
 
-  const editor = useEditor(
+  const isDark = useIsDark();
+  const editor = useCreateBlockNote(
     {
-      extensions: [StarterKit],
-      content: notesDraft,
-      onUpdate: ({ editor }) => {
-        setNotesDraft(editor.getHTML());
-      },
-      editorProps: {
-        attributes: {
-          class:
-            "min-h-[280px] rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none",
-        },
-      },
+      initialContent: noteBlocks,
     },
-    []
+    [noteBlocks]
   );
 
   useEffect(() => {
@@ -120,7 +139,9 @@ export const DesignDetail = () => {
           tradeoffs: data.tradeoffs,
         });
         setTradeoffsDraft(data.tradeoffs ?? "");
-        setNotesDraft(data.notes_markdown ?? "");
+        const parsedNotes = toNoteBlocks(data.notes_markdown);
+        setNoteBlocks(parsedNotes);
+        setNotesDraft(JSON.stringify(parsedNotes));
         const normalized = Array.isArray(data.references_json)
           ? data.references_json.map((ref, index) => {
               if (typeof ref === "string") {
@@ -138,6 +159,10 @@ export const DesignDetail = () => {
             })
           : [];
         setReferences(normalized);
+        setBucketLabels(data.bucket_labels ?? []);
+        setIsImportant(Boolean(data.is_important));
+        setIsDone(Boolean(data.is_done));
+        setCanvasDraft((data.canvas_json as DesignCanvasScene) ?? null);
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Failed to load topic");
@@ -155,57 +180,34 @@ export const DesignDetail = () => {
   }, [id]);
 
   useEffect(() => {
-    if (editor) {
-      editor.commands.setContent(notesDraft || "");
-    }
-  }, [editor, notesDraft]);
-
-  useEffect(() => {
-    writeSheetMeta(sheetMeta);
-  }, [sheetMeta]);
-
-  const meta = topic ? sheetMeta[topic.id] ?? { important: false, done: false, buckets: [] } : null;
+    const computeOffset = () => {
+      const header = document.querySelector("header");
+      const headerHeight = header?.getBoundingClientRect().height ?? 0;
+      const verticalPadding = 32;
+      setEditorOffset(headerHeight + verticalPadding);
+    };
+    computeOffset();
+    window.addEventListener("resize", computeOffset);
+    return () => window.removeEventListener("resize", computeOffset);
+  }, []);
 
   const toggleImportant = () => {
-    if (!topic) return;
-    setSheetMeta((prev) => {
-      const current = prev[topic.id] ?? { important: false, done: false, buckets: [] };
-      return { ...prev, [topic.id]: { ...current, important: !current.important } };
-    });
+    setIsImportant((prev) => !prev);
   };
 
   const toggleDone = () => {
-    if (!topic) return;
-    setSheetMeta((prev) => {
-      const current = prev[topic.id] ?? { important: false, done: false, buckets: [] };
-      return { ...prev, [topic.id]: { ...current, done: !current.done } };
-    });
+    setIsDone((prev) => !prev);
   };
 
   const handleAddBucket = () => {
-    if (!topic) return;
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
-    setSheetMeta((prev) => {
-      const current = prev[topic.id] ?? { important: false, done: false, buckets: [] };
-      if (current.buckets.includes(trimmed)) return prev;
-      return {
-        ...prev,
-        [topic.id]: { ...current, buckets: [...current.buckets, trimmed] },
-      };
-    });
+    setBucketLabels((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
     setBucketInput("");
   };
 
   const removeBucket = (bucket: string) => {
-    if (!topic) return;
-    setSheetMeta((prev) => {
-      const current = prev[topic.id] ?? { important: false, done: false, buckets: [] };
-      return {
-        ...prev,
-        [topic.id]: { ...current, buckets: current.buckets.filter((item) => item !== bucket) },
-      };
-    });
+    setBucketLabels((prev) => prev.filter((item) => item !== bucket));
   };
 
   const handleAddReference = () => {
@@ -235,6 +237,10 @@ export const DesignDetail = () => {
         notes_markdown: notesDraft,
         tradeoffs: tradeoffsDraft,
         references_json: references.map((ref) => ({ label: ref.label, url: ref.url })),
+        bucket_labels: bucketLabels,
+        is_important: isImportant,
+        is_done: isDone,
+        canvas_json: canvasDraft ?? {},
       };
       const updated = await updateDesignTopic(topic.id, payload);
       setTopic(updated);
@@ -303,10 +309,10 @@ export const DesignDetail = () => {
             onClick={toggleDone}
             className={cn(
               "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10",
-              meta?.done && "bg-emerald-500 text-white hover:bg-emerald-500"
+              isDone && "bg-emerald-500 text-white hover:bg-emerald-500"
             )}
           >
-            {meta?.done ? "Done" : "Mark done"}
+            {isDone ? "Done" : "Mark done"}
           </Button>
           <Button
             variant="outline"
@@ -314,11 +320,11 @@ export const DesignDetail = () => {
             onClick={toggleImportant}
             className={cn(
               "border-amber-500/40 text-amber-600 hover:bg-amber-500/10",
-              meta?.important && "bg-amber-500 text-white hover:bg-amber-500"
+              isImportant && "bg-amber-500 text-white hover:bg-amber-500"
             )}
           >
-            <Star className={cn("h-3.5 w-3.5", meta?.important && "fill-white")} />
-            {meta?.important ? "Important" : "Mark important"}
+            <Star className={cn("h-3.5 w-3.5", isImportant && "fill-white")} />
+            {isImportant ? "Important" : "Mark important"}
           </Button>
           <Dialog>
             <DialogTrigger asChild>
@@ -392,7 +398,7 @@ export const DesignDetail = () => {
       <div className="rounded-md border border-border bg-surface px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Buckets</span>
-          {(meta?.buckets ?? []).map((bucket) => (
+          {bucketLabels.map((bucket) => (
             <span
               key={bucket}
               className={cn(badgeBase, "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400")}
@@ -407,7 +413,7 @@ export const DesignDetail = () => {
               </button>
             </span>
           ))}
-          {(meta?.buckets ?? []).length === 0 && (
+          {bucketLabels.length === 0 && (
             <span className="text-xs text-muted-foreground">No buckets</span>
           )}
           <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
@@ -424,61 +430,59 @@ export const DesignDetail = () => {
         </div>
       </div>
 
-      <SystemDesignCanvas />
+      <SystemDesignCanvas
+        key={topic.id}
+        initialScene={canvasDraft}
+        onSceneChange={setCanvasDraft}
+      />
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Solution page</p>
+        <div
+          className={cn(
+            "mt-3 w-full overflow-y-auto rounded-md border border-border px-1 py-1",
+            "bg-white dark:bg-black"
+          )}
+          style={{ maxHeight: `calc(100vh - ${editorOffset}px)` }}
+        >
+          <BlockNoteView
+            editor={editor}
+            theme={isDark ? "dark" : "light"}
+            onChange={() => {
+              // Persist this JSON string later via backend save.
+              setNotesDraft(JSON.stringify(editor.document));
+            }}
+            className={cn(
+              "w-full text-[12px] leading-5",
+              "dark:[--bn-colors-editor-background:#000000]",
+              "dark:[--bn-colors-editor-text:#fafafa]",
+              "dark:[--bn-colors-menu-background:#0b0b0f]",
+              "dark:[--bn-colors-menu-text:#fafafa]",
+              "dark:[--bn-colors-border:#27272a]",
+              "dark:[--bn-colors-hovered-background:#18181b]",
+              "dark:[--bn-colors-selected-background:#2563eb]",
+              "dark:[--bn-colors-selected-text:#ffffff]",
+              "[&_.bn-container]:bg-white dark:[&_.bn-container]:bg-black",
+              "[&_.bn-editor]:w-full [&_.bn-editor]:max-w-none",
+              "[&_.bn-editor]:px-2 [&_.bn-editor]:py-2",
+              "[&_.bn-editor]:text-[12px] [&_.bn-editor]:leading-5",
+              "[&_.bn-editor]:min-h-0"
+            )}
+          />
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Solution page</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => editor?.chain().focus().toggleBold().run()}
-                disabled={!editor}
-              >
-                Bold
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => editor?.chain().focus().toggleItalic().run()}
-                disabled={!editor}
-              >
-                Italic
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                disabled={!editor}
-              >
-                Bullets
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
-                disabled={!editor}
-              >
-                Code block
-              </Button>
-            </div>
-            <div className="mt-3">
-              <EditorContent editor={editor} />
-            </div>
-          </div>
-
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tradeoffs</p>
             <Textarea
               value={tradeoffsDraft}
               onChange={(event) => setTradeoffsDraft(event.target.value)}
               placeholder="Latency vs throughput, consistency vs availability"
-              className="mt-2 min-h-[140px]"
+              className="mt-2 min-h-[280px]"
             />
           </div>
-
         </div>
 
         <div className="space-y-4">

@@ -76,6 +76,11 @@ class Command(BaseCommand):
                 "tags": ["arrays", "hashmap"],
                 "statement": "Find indices of two numbers that add to target.",
                 "solution_notes": "Hashmap for O(n) lookup.",
+                "workspace_notes": "Remember to handle duplicates.",
+                "approaches_json": [{"title": "Hashmap", "notes": "One-pass map for O(n)."}],
+                "bucket_labels": ["core"],
+                "is_important": True,
+                "is_done": True,
             },
             {
                 "title": "Trapping Rain Water",
@@ -171,6 +176,12 @@ class Command(BaseCommand):
                     setattr(problem, key, value)
                 problem.save()
             problem.tags.set([tag_objs[tag] for tag in tags_for_problem])
+            problem.workspace_notes = problem_data.get("workspace_notes", problem.workspace_notes)
+            problem.approaches_json = problem_data.get("approaches_json", problem.approaches_json)
+            problem.bucket_labels = problem_data.get("bucket_labels", problem.bucket_labels)
+            problem.is_important = problem_data.get("is_important", problem.is_important)
+            problem.is_done = problem_data.get("is_done", problem.is_done)
+            problem.save()
             problems.append(problem)
 
         now = timezone.now()
@@ -193,6 +204,10 @@ class Command(BaseCommand):
                 "notes_markdown": "Kafka + Flink pipeline with tiered storage.",
                 "tradeoffs": "Latency vs. cost.",
                 "references_json": ["https://kafka.apache.org/"],
+                "bucket_labels": ["streams"],
+                "is_important": True,
+                "is_done": False,
+                "canvas_json": {},
             },
             {
                 "title": "Rate limiter",
@@ -262,6 +277,11 @@ class Command(BaseCommand):
                     setattr(topic, key, value)
                 topic.save()
             topic.tags.set([tag_objs[tag] for tag in tags_for_topic if tag in tag_objs])
+            topic.bucket_labels = topic_data.get("bucket_labels", topic.bucket_labels)
+            topic.is_important = topic_data.get("is_important", topic.is_important)
+            topic.is_done = topic_data.get("is_done", topic.is_done)
+            topic.canvas_json = topic_data.get("canvas_json", topic.canvas_json)
+            topic.save()
 
         sessions_data = [
             {

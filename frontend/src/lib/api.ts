@@ -34,6 +34,11 @@ export type DSAProblem = {
   tags: string[];
   statement: string;
   solution_notes: string;
+  workspace_notes: string;
+  approaches_json: Array<{ id?: number | string; title?: string; notes?: string }>;
+  bucket_labels: string[];
+  is_important: boolean;
+  is_done: boolean;
   attempts_count: number;
   created_at: string;
   updated_at: string;
@@ -57,6 +62,10 @@ export type DesignTopic = {
   notes_markdown: string;
   tradeoffs: string;
   references_json: Array<string | { label?: string; url?: string }>;
+  bucket_labels: string[];
+  is_important: boolean;
+  is_done: boolean;
+  canvas_json: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 };
@@ -191,6 +200,9 @@ export const getDueReviews = (days = 0) =>
 
 export const getAnalyticsSummary = (days = 30) =>
   apiFetch<AnalyticsSummary>(`/api/analytics/summary${buildQuery({ days })}`);
+
+export const createReviewItem = (data: Partial<ReviewItem>) =>
+  apiFetch<ReviewItem>("/api/reviews/", { method: "POST", data });
 
 export const registerUser = (data: { username: string; password: string; email?: string }) =>
   apiFetch<{ id: number; username: string; email: string }>("/api/auth/register", {

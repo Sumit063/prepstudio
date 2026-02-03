@@ -137,6 +137,23 @@ class StudySessionViewSet(viewsets.ModelViewSet):
         serializer.save(owner=owner)
 
 
+class ReviewItemViewSet(viewsets.ModelViewSet):
+    serializer_class = ReviewItemSerializer
+
+    def _get_owner(self):
+        owner = get_request_user(self.request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        return owner
+
+    def get_queryset(self):
+        owner = self._get_owner()
+        return ReviewItem.objects.filter(owner=owner).order_by("-next_review_at")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._get_owner())
+
+
 class DueReviewsView(APIView):
     def get(self, request):
         owner = get_request_user(request)
