@@ -13,46 +13,48 @@ from .models import (
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    search_fields = ("name",)
+    list_display = ("name", "owner")
+    search_fields = ("name", "owner__username")
+    list_filter = ("owner",)
 
 
 @admin.register(DSAProblem)
 class DSAProblemAdmin(admin.ModelAdmin):
-    list_display = ("title", "platform", "difficulty", "updated_at")
-    list_filter = ("platform", "difficulty")
+    list_display = ("title", "owner", "platform", "difficulty", "updated_at")
+    list_filter = ("owner", "platform", "difficulty")
     search_fields = ("title",)
     filter_horizontal = ("tags",)
 
 
 @admin.register(DSAAttempt)
 class DSAAttemptAdmin(admin.ModelAdmin):
-    list_display = ("problem", "status", "time_taken_minutes", "created_at")
-    list_filter = ("status",)
-    search_fields = ("problem__title",)
+    list_display = ("problem", "owner", "status", "time_taken_minutes", "created_at")
+    list_filter = ("owner", "status")
+    search_fields = ("problem__title", "owner__username")
 
 
 @admin.register(DesignTopic)
 class DesignTopicAdmin(admin.ModelAdmin):
-    list_display = ("title", "category", "updated_at")
-    list_filter = ("category",)
+    list_display = ("title", "owner", "category", "updated_at")
+    list_filter = ("owner", "category")
     search_fields = ("title",)
     filter_horizontal = ("tags",)
 
 
 @admin.register(StudySession)
 class StudySessionAdmin(admin.ModelAdmin):
-    list_display = ("date", "duration_minutes", "focus_area")
-    list_filter = ("focus_area",)
+    list_display = ("date", "owner", "duration_minutes", "focus_area")
+    list_filter = ("owner", "focus_area")
 
 
 @admin.register(ReviewItem)
 class ReviewItemAdmin(admin.ModelAdmin):
-    list_display = ("item_type", "ref_id", "next_review_at", "interval_days")
-    list_filter = ("item_type",)
+    list_display = ("item_type", "owner", "ref_id", "next_review_at", "interval_days")
+    list_filter = ("owner", "item_type")
 
 
 @admin.register(AuditEvent)
 class AuditEventAdmin(admin.ModelAdmin):
-    list_display = ("source", "tool_name", "status", "created_at")
-    list_filter = ("source", "status")
-    search_fields = ("tool_name",)
+    list_display = ("source", "tool_name", "owner", "status", "created_at")
+    list_filter = ("owner", "source", "status")
+    search_fields = ("tool_name", "owner__username")

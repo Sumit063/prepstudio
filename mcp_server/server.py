@@ -13,6 +13,7 @@ load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
+DEMO_USERNAME = os.getenv("DEMO_USERNAME", "demo")
 API_TIMEOUT = float(os.getenv("API_TIMEOUT", "15"))
 
 mcp = FastMCP("PrepStudio")
@@ -22,6 +23,8 @@ def _headers() -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if SERVICE_TOKEN:
         headers["X-Service-Token"] = SERVICE_TOKEN
+        if DEMO_USERNAME:
+            headers["X-Acting-User"] = DEMO_USERNAME
     return headers
 
 

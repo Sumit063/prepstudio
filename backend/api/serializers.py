@@ -2,8 +2,11 @@
 
 from typing import Iterable
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
+from .auth_utils import get_request_user
 from .models import (
     AuditEvent,
     DesignTopic,
@@ -64,8 +67,14 @@ class DSAProblemSerializer(serializers.ModelSerializer):
         return instance
 
     def _sync_tags(self, instance: DSAProblem, tags: list[str]) -> None:
+        request = self.context.get("request") if hasattr(self, "context") else None
+        owner = get_request_user(request) if request else None
+        if owner is None:
+            raise serializers.ValidationError("Authenticated user required for tags.")
         normalized = [tag.strip() for tag in tags if tag.strip()]
-        tag_objs = [Tag.objects.get_or_create(name=name)[0] for name in normalized]
+        tag_objs = [
+            Tag.objects.get_or_create(owner=owner, name=name)[0] for name in normalized
+        ]
         instance.tags.set(tag_objs)
 
 
@@ -117,8 +126,14 @@ class DesignTopicSerializer(serializers.ModelSerializer):
         return instance
 
     def _sync_tags(self, instance: DesignTopic, tags: list[str]) -> None:
+        request = self.context.get("request") if hasattr(self, "context") else None
+        owner = get_request_user(request) if request else None
+        if owner is None:
+            raise serializers.ValidationError("Authenticated user required for tags.")
         normalized = [tag.strip() for tag in tags if tag.strip()]
-        tag_objs = [Tag.objects.get_or_create(name=name)[0] for name in normalized]
+        tag_objs = [
+            Tag.objects.get_or_create(owner=owner, name=name)[0] for name in normalized
+        ]
         instance.tags.set(tag_objs)
 
 
@@ -148,3 +163,27 @@ class AuditEventSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class UserRegistrationSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(write_only=True, min_length=8)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate_username(self, value: str) -> str:
+        User = get_user_model()
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists.")
+        return value
+
+    def validate_password(self, value: str) -> str:
+        validate_password(value)
+        return value
+
+    def create(self, validated_data):
+        User = get_user_model()
+        return User.objects.create_user(
+            username=validated_data["username"],
+            password=validated_data["password"],
+            email=validated_data.get("email", ""),
+        )

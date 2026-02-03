@@ -1,7 +1,9 @@
 ﻿from __future__ import annotations
 
+import os
 from datetime import date, timedelta
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -22,14 +24,29 @@ class Command(BaseCommand):
         parser.add_argument("--reset", action="store_true", help="Delete existing data first")
 
     def handle(self, *args, **options):
+        User = get_user_model()
+        demo_username = os.getenv("DEMO_USERNAME", "demo")
+        demo_email = os.getenv("DEMO_EMAIL", "demo@prepstudio.local")
+        demo_password = os.getenv("DEMO_PASSWORD", "demo-password")
+
+        demo_user, created = User.objects.get_or_create(
+            username=demo_username, defaults={"email": demo_email}
+        )
+        if created:
+            demo_user.set_password(demo_password)
+            demo_user.save()
+        if not demo_user.is_active:
+            demo_user.is_active = True
+            demo_user.save(update_fields=["is_active"])
+
         if options.get("reset"):
-            self.stdout.write("Clearing existing data...")
-            DSAAttempt.objects.all().delete()
-            DSAProblem.objects.all().delete()
-            DesignTopic.objects.all().delete()
-            StudySession.objects.all().delete()
-            ReviewItem.objects.all().delete()
-            Tag.objects.all().delete()
+            self.stdout.write("Clearing existing demo data...")
+            DSAAttempt.objects.filter(owner=demo_user).delete()
+            DSAProblem.objects.filter(owner=demo_user).delete()
+            DesignTopic.objects.filter(owner=demo_user).delete()
+            StudySession.objects.filter(owner=demo_user).delete()
+            ReviewItem.objects.filter(owner=demo_user).delete()
+            Tag.objects.filter(owner=demo_user).delete()
 
         tags = [
             "arrays",
@@ -46,7 +63,9 @@ class Command(BaseCommand):
             "consistency",
             "system-design",
         ]
-        tag_objs = {name: Tag.objects.get_or_create(name=name)[0] for name in tags}
+        tag_objs = {
+            name: Tag.objects.get_or_create(owner=demo_user, name=name)[0] for name in tags
+        }
 
         problems_data = [
             {
@@ -144,8 +163,10 @@ class Command(BaseCommand):
         problems = []
         for problem_data in problems_data:
             tags_for_problem = problem_data.pop("tags")
-            problem, _ = DSAProblem.objects.get_or_create(title=problem_data["title"], defaults=problem_data)
-            if not _:
+            problem, created_problem = DSAProblem.objects.get_or_create(
+                owner=demo_user, title=problem_data["title"], defaults=problem_data
+            )
+            if not created_problem:
                 for key, value in problem_data.items():
                     setattr(problem, key, value)
                 problem.save()
@@ -155,6 +176,7 @@ class Command(BaseCommand):
         now = timezone.now()
         for index, problem in enumerate(problems[:8]):
             DSAAttempt.objects.create(
+                owner=demo_user,
                 problem=problem,
                 status=DSAAttempt.Status.SOLVED if index % 3 == 0 else DSAAttempt.Status.PARTIAL,
                 time_taken_minutes=20 + index * 5,
@@ -232,10 +254,10 @@ class Command(BaseCommand):
 
         for topic_data in topics_data:
             tags_for_topic = topic_data.pop("tags")
-            topic, created = DesignTopic.objects.get_or_create(
-                title=topic_data["title"], defaults=topic_data
+            topic, created_topic = DesignTopic.objects.get_or_create(
+                owner=demo_user, title=topic_data["title"], defaults=topic_data
             )
-            if not created:
+            if not created_topic:
                 for key, value in topic_data.items():
                     setattr(topic, key, value)
                 topic.save()
@@ -263,20 +285,24 @@ class Command(BaseCommand):
         ]
 
         for session_data in sessions_data:
-            StudySession.objects.get_or_create(date=session_data["date"], defaults=session_data)
+            StudySession.objects.get_or_create(
+                owner=demo_user, date=session_data["date"], defaults=session_data
+            )
 
         review_items = []
         for problem in problems[:3]:
             review_items.append(
                 ReviewItem.objects.get_or_create(
+                    owner=demo_user,
                     item_type=ReviewItem.ItemType.DSA_PROBLEM,
                     ref_id=problem.id,
                     defaults={"next_review_at": now + timedelta(days=1), "interval_days": 2},
                 )[0]
             )
-        for topic in DesignTopic.objects.all()[:2]:
+        for topic in DesignTopic.objects.filter(owner=demo_user)[:2]:
             review_items.append(
                 ReviewItem.objects.get_or_create(
+                    owner=demo_user,
                     item_type=ReviewItem.ItemType.DESIGN_TOPIC,
                     ref_id=topic.id,
                     defaults={"next_review_at": now, "interval_days": 1},
