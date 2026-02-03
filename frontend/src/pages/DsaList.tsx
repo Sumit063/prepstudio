@@ -423,8 +423,18 @@ export const DsaList = () => {
     });
   };
 
-  const toggleImportant = (problemId: number) => {
-    setImportantMap((prev) => ({ ...prev, [problemId]: !prev[problemId] }));
+  const toggleImportant = async (problemId: number) => {
+    const nextValue = !importantMap[problemId];
+    setImportantMap((prev) => ({ ...prev, [problemId]: nextValue }));
+    try {
+      const updated = await updateDsaProblem(problemId, { is_important: nextValue });
+      setProblems((prev) =>
+        prev.map((problem) => (problem.id === updated.id ? updated : problem))
+      );
+    } catch (err) {
+      setImportantMap((prev) => ({ ...prev, [problemId]: !nextValue }));
+      setDetailError(err instanceof Error ? err.message : "Failed to update important flag");
+    }
   };
 
   const toggleDone = async (problemId: number) => {
