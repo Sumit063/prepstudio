@@ -4,6 +4,7 @@ import { Header } from "../components/layout/Header";
 import { Sidebar } from "../components/layout/Sidebar";
 import { Dashboard } from "../pages/Dashboard";
 import { Design } from "../pages/Design";
+import { DesignDetail } from "../pages/DesignDetail";
 import { DsaDetail } from "../pages/DsaDetail";
 import { DsaList } from "../pages/DsaList";
 import { Reviews } from "../pages/Reviews";
@@ -23,17 +24,23 @@ const App = () => {
         <div
           className={cn(
             "transition-[padding] duration-200",
-            sidebarCollapsed ? "pl-16" : "pl-56"
+            sidebarCollapsed ? "pl-12" : "pl-52"
           )}
         >
           <Header />
-          <main className="px-6 py-6">
-            <div className="mx-auto w-full max-w-6xl">
+          <main className={cn("py-4", sidebarCollapsed ? "px-2" : "px-4")}>
+            <div
+              className={cn(
+                "mx-auto w-full",
+                sidebarCollapsed ? "max-w-[1440px]" : "max-w-7xl"
+              )}
+            >
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/dsa" element={<DsaList />} />
                 <Route path="/dsa/:id" element={<DsaDetail />} />
                 <Route path="/design" element={<Design />} />
+                <Route path="/design/:id" element={<DesignDetail />} />
                 <Route path="/reviews" element={<Reviews />} />
                 <Route path="/sessions" element={<StudySessions />} />
               </Routes>

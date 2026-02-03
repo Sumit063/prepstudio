@@ -1,8 +1,7 @@
 import { Plus, Star } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
   DialogClose,
@@ -15,16 +14,16 @@ import {
 } from "../components/ui/Dialog";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
-import { createDsaProblem, listDsaProblems, listProblemAttempts } from "../lib/api";
+import { createDsaProblem, listDsaProblems, listProblemAttempts, updateDsaProblem } from "../lib/api";
 import type { DSAProblem, DSAAttempt } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
+import { CodeSnippetsPanel, hasSnippetPayload } from "../components/dsa/CodeSnippetsPanel";
 
 type Approach = {
   id: number;
   title: string;
   notes: string;
-  code: string;
 };
 
 type DifficultyLevel = "Easy" | "Medium" | "Hard";
@@ -32,6 +31,8 @@ type DifficultyLevel = "Easy" | "Medium" | "Hard";
 type BucketMap = Record<number, string[]>;
 
 type ImportantMap = Record<number, boolean>;
+
+type DoneMap = Record<number, boolean>;
 
 const statusLabel = (status?: DSAAttempt["status"]) => {
   if (status === "SOLVED") return "Solved";
@@ -117,12 +118,15 @@ export const DsaList = () => {
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
-  const [sheetChecks, setSheetChecks] = useState<Record<number, boolean>>({});
   const [approachMap, setApproachMap] = useState<Record<number, Approach[]>>({});
   const [problemNotes, setProblemNotes] = useState<Record<number, string>>({});
   const [importantMap, setImportantMap] = useState<ImportantMap>({});
+  const [doneMap, setDoneMap] = useState<DoneMap>({});
   const [bucketMap, setBucketMap] = useState<BucketMap>({});
   const [bucketInput, setBucketInput] = useState("");
+  const [leftWidth, setLeftWidth] = useState(320);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -197,16 +201,16 @@ export const DsaList = () => {
   }, [search, difficultyFilter]);
 
   useEffect(() => {
-    setSheetChecks((prev) => {
+    setImportantMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
         if (next[problem.id] === undefined) {
-          next[problem.id] = statusMap[problem.id] === "Solved";
+          next[problem.id] = false;
         }
       });
       return next;
     });
-    setImportantMap((prev) => {
+    setDoneMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
         if (next[problem.id] === undefined) {
@@ -224,7 +228,30 @@ export const DsaList = () => {
       });
       return next;
     });
-  }, [problems, statusMap]);
+  }, [problems]);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!dragRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const next = event.clientX - rect.left;
+      const min = 240;
+      const max = Math.max(min, rect.width - 320);
+      const clamped = Math.max(min, Math.min(max, next));
+      setLeftWidth(clamped);
+    };
+
+    const handleUp = () => {
+      dragRef.current = false;
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, []);
 
   const bucketOptions = useMemo(() => {
     const all = new Set<string>();
@@ -273,6 +300,10 @@ export const DsaList = () => {
   const workspaceNotes = selectedProblem ? problemNotes[selectedProblem.id] ?? "" : "";
   const selectedBuckets = selectedProblem ? bucketMap[selectedProblem.id] ?? [] : [];
   const selectedImportant = selectedProblem ? importantMap[selectedProblem.id] ?? false : false;
+  const currentStatus = selectedProblem ? statusMap[selectedProblem.id] ?? "Unsolved" : "Unsolved";
+  const hasSavedSnippets = selectedProblem
+    ? hasSnippetPayload(selectedProblem.solution_notes)
+    : false;
 
   const handleCreate = async () => {
     setSaving(true);
@@ -301,6 +332,14 @@ export const DsaList = () => {
     }
   };
 
+  const handlePersistSnippets = async (payload: string) => {
+    if (!selectedProblemId) return;
+    const updated = await updateDsaProblem(selectedProblemId, { solution_notes: payload });
+    setProblems((prev) =>
+      prev.map((problem) => (problem.id === updated.id ? updated : problem))
+    );
+  };
+
   const handleAddApproach = () => {
     if (!selectedProblem) return;
     setApproachMap((prev) => {
@@ -309,7 +348,7 @@ export const DsaList = () => {
         ...prev,
         [selectedProblem.id]: [
           ...current,
-          { id: Date.now(), title: "", notes: "", code: "" },
+          { id: Date.now(), title: "", notes: "" },
         ],
       };
     });
@@ -343,6 +382,10 @@ export const DsaList = () => {
     setImportantMap((prev) => ({ ...prev, [problemId]: !prev[problemId] }));
   };
 
+  const toggleDone = (problemId: number) => {
+    setDoneMap((prev) => ({ ...prev, [problemId]: !prev[problemId] }));
+  };
+
   const handleAddBucket = () => {
     if (!selectedProblem) return;
     const trimmed = bucketInput.trim();
@@ -363,194 +406,190 @@ export const DsaList = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DSA</p>
-          <h1 className="text-2xl font-semibold">Problem sheet</h1>
-        </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4" />
-              Add problem
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add DSA problem</DialogTitle>
-              <DialogDescription>Capture a new problem with context and notes.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-3">
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Title</label>
-                <Input
-                  value={form.title}
-                  onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  placeholder="Two Sum"
-                />
-              </div>
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Platform</label>
-                <Select
-                  value={form.platform}
-                  onChange={(event) => setForm({ ...form, platform: event.target.value })}
-                >
-                  <option value="LEETCODE">LeetCode</option>
-                  <option value="GFG">GFG</option>
-                  <option value="CUSTOM">Custom</option>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Difficulty</label>
-                  <Select
-                    value={String(form.difficulty)}
-                    onChange={(event) =>
-                      setForm({ ...form, difficulty: Number(event.target.value) })
-                    }
-                  >
-                    <option value="1">Easy (1)</option>
-                    <option value="2">Easy (2)</option>
-                    <option value="3">Medium (3)</option>
-                    <option value="4">Hard (4)</option>
-                    <option value="5">Hard (5)</option>
-                  </Select>
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Tags</label>
-                  <Input
-                    value={form.tags}
-                    onChange={(event) => setForm({ ...form, tags: event.target.value })}
-                    placeholder="arrays, hashmap"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Statement</label>
-                <Textarea
-                  value={form.statement}
-                  onChange={(event) => setForm({ ...form, statement: event.target.value })}
-                  placeholder="Paste the problem statement."
-                />
-              </div>
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Solution notes</label>
-                <Textarea
-                  value={form.solution_notes}
-                  onChange={(event) => setForm({ ...form, solution_notes: event.target.value })}
-                  placeholder="Your solution notes"
-                />
-              </div>
-              {createError && (
-                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  {createError}
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="ghost">Cancel</Button>
-              </DialogClose>
-              <Button onClick={handleCreate} disabled={saving}>
-                {saving ? "Saving..." : "Save problem"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
+    <div className="space-y-3">
       {error && (
         <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
           Error: {error}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Tracker</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Total</p>
-                <p className="text-lg font-semibold">{tracker.total}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Solved</p>
-                <p className="text-lg font-semibold">{tracker.solved}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Partial</p>
-                <p className="text-lg font-semibold">{tracker.partial}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Completion</p>
-                <p className="text-lg font-semibold">{tracker.completion}%</p>
-              </div>
+      <div className="rounded-md border border-border bg-surface px-2 py-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-baseline gap-2">
+              <span>Total</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.total}</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-4">
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search problems"
-              />
-              <Select
-                value={difficultyFilter}
-                onChange={(event) => setDifficultyFilter(event.target.value)}
-              >
-                <option value="All">All difficulty</option>
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </Select>
-              <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="All">All status</option>
-                <option value="Solved">Solved</option>
-                <option value="Partial">Partial</option>
-                <option value="Unsolved">Unsolved</option>
-              </Select>
-              <Select
-                value={importantFilter}
-                onChange={(event) => setImportantFilter(event.target.value)}
-              >
-                <option value="All">All questions</option>
-                <option value="Important">Important only</option>
-              </Select>
-              <Select value={bucketFilter} onChange={(event) => setBucketFilter(event.target.value)}>
-                <option value="All">All buckets</option>
-                {bucketOptions.map((bucket) => (
-                  <option key={bucket} value={bucket}>
-                    {bucket}
-                  </option>
-                ))}
-              </Select>
+            <div className="flex items-baseline gap-2">
+              <span>Solved</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.solved}</span>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-baseline gap-2">
+              <span>Partial</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.partial}</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span>Completion</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.completion}%</span>
+            </div>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search problems"
+              className="h-8 text-xs lg:w-56"
+            />
+            <Select
+              value={difficultyFilter}
+              onChange={(event) => setDifficultyFilter(event.target.value)}
+              className="h-8 text-xs min-w-[120px]"
+            >
+              <option value="All">All difficulty</option>
+              <option value="Easy">Easy</option>
+              <option value="Medium">Medium</option>
+              <option value="Hard">Hard</option>
+            </Select>
+            <Select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-8 text-xs min-w-[120px]"
+            >
+              <option value="All">All status</option>
+              <option value="Solved">Solved</option>
+              <option value="Partial">Partial</option>
+              <option value="Unsolved">Unsolved</option>
+            </Select>
+            <Select
+              value={importantFilter}
+              onChange={(event) => setImportantFilter(event.target.value)}
+              className="h-8 text-xs min-w-[140px]"
+            >
+              <option value="All">All questions</option>
+              <option value="Important">Important only</option>
+            </Select>
+            <Select
+              value={bucketFilter}
+              onChange={(event) => setBucketFilter(event.target.value)}
+              className="h-8 text-xs min-w-[140px]"
+            >
+              <option value="All">All buckets</option>
+              {bucketOptions.map((bucket) => (
+                <option key={bucket} value={bucket}>
+                  {bucket}
+                </option>
+              ))}
+            </Select>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  aria-label="Add problem"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add DSA problem</DialogTitle>
+                  <DialogDescription>Capture a new problem with context and notes.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3">
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Title</label>
+                    <Input
+                      value={form.title}
+                      onChange={(event) => setForm({ ...form, title: event.target.value })}
+                      placeholder="Two Sum"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Platform</label>
+                    <Select
+                      value={form.platform}
+                      onChange={(event) => setForm({ ...form, platform: event.target.value })}
+                    >
+                      <option value="LEETCODE">LeetCode</option>
+                      <option value="GFG">GFG</option>
+                      <option value="CUSTOM">Custom</option>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Difficulty</label>
+                      <Select
+                        value={String(form.difficulty)}
+                        onChange={(event) =>
+                          setForm({ ...form, difficulty: Number(event.target.value) })
+                        }
+                      >
+                        <option value="1">Easy (1)</option>
+                        <option value="2">Easy (2)</option>
+                        <option value="3">Medium (3)</option>
+                        <option value="4">Hard (4)</option>
+                        <option value="5">Hard (5)</option>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Tags</label>
+                      <Input
+                        value={form.tags}
+                        onChange={(event) => setForm({ ...form, tags: event.target.value })}
+                        placeholder="arrays, hashmap"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Statement</label>
+                    <Textarea
+                      value={form.statement}
+                      onChange={(event) => setForm({ ...form, statement: event.target.value })}
+                      placeholder="Paste the problem statement."
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Solution notes</label>
+                    <Textarea
+                      value={form.solution_notes}
+                      onChange={(event) => setForm({ ...form, solution_notes: event.target.value })}
+                      placeholder="Your solution notes"
+                    />
+                  </div>
+                  {createError && (
+                    <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      {createError}
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="ghost">Cancel</Button>
+                  </DialogClose>
+                  <Button onClick={handleCreate} disabled={saving}>
+                    {saving ? "Saving..." : "Save problem"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-0 lg:grid-cols-[360px_1fr] rounded-md border border-border bg-surface">
-        <div className="space-y-3 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">DSA Sheet</h2>
-            <span className="text-xs text-muted-foreground">{filteredProblems.length} items</span>
-          </div>
+      <div
+        ref={containerRef}
+        className="grid rounded-md border border-border bg-surface lg:h-[calc(100vh-160px)] lg:overflow-hidden"
+        style={{ gridTemplateColumns: `${leftWidth}px 8px 1fr` }}
+      >
+        <div className="space-y-3 p-2 lg:overflow-y-auto">
           {loading && <p className="text-xs text-muted-foreground">Loading problems...</p>}
           <div className="space-y-2">
             {filteredProblems.map((problem) => {
-              const status = statusMap[problem.id] ?? "Unsolved";
               const isActive = problem.id === selectedProblem?.id;
               const buckets = bucketMap[problem.id] ?? [];
               const isImportant = importantMap[problem.id];
+              const isDone = doneMap[problem.id];
               return (
                 <div
                   key={problem.id}
@@ -564,55 +603,35 @@ export const DsaList = () => {
                     }
                   }}
                   className={cn(
-                    "flex w-full items-start justify-between gap-3 rounded-md border px-3 py-3 text-left transition",
+                    "relative space-y-2 rounded-md border px-3 py-2 text-left transition",
                     isActive ? "border-accent bg-muted" : "border-border hover:bg-muted"
                   )}
                 >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={sheetChecks[problem.id] ?? false}
-                      onChange={(event) => {
-                        event.stopPropagation();
-                        setSheetChecks((prev) => ({
-                          ...prev,
-                          [problem.id]: !(prev[problem.id] ?? false),
-                        }));
-                      }}
-                      className="mt-1"
-                    />
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-medium text-sm text-foreground">{problem.title}</div>
-                        <DifficultyBadge level={difficultyLabel(problem.difficulty)} />
-                        {isImportant && (
-                          <span className={cn(badgeBase, "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
-                            Important
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {platformLabel(problem.platform)} • Last touched {lastAttemptMap[problem.id] ?? "—"}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {buckets.map((bucket) => (
-                          <BucketBadge key={bucket} label={bucket} />
-                        ))}
-                        {problem.tags.map((tag) => (
-                          <TagBadge key={tag} label={tag} />
-                        ))}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isDone}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          toggleDone(problem.id);
+                        }}
+                        className="mt-1"
+                        aria-label="Mark done"
+                      />
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium text-foreground">{problem.title}</div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <StatusBadge status={status} />
                     <button
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
                         toggleImportant(problem.id);
                       }}
-                      className="rounded-md border border-border p-1 text-muted-foreground hover:bg-background"
+                      className="rounded-md text-muted-foreground hover:text-foreground"
                       aria-label="Toggle important"
                     >
                       <Star
@@ -623,6 +642,17 @@ export const DsaList = () => {
                       />
                     </button>
                   </div>
+                  <div className="flex flex-wrap gap-2 pb-5">
+                    {buckets.map((bucket) => (
+                      <BucketBadge key={bucket} label={bucket} />
+                    ))}
+                    {problem.tags.map((tag) => (
+                      <TagBadge key={tag} label={tag} />
+                    ))}
+                  </div>
+                  <div className="absolute bottom-2 right-3">
+                    <DifficultyBadge level={difficultyLabel(problem.difficulty)} />
+                  </div>
                 </div>
               );
             })}
@@ -632,21 +662,33 @@ export const DsaList = () => {
           </div>
         </div>
 
-        <div className="space-y-5 border-l border-border p-6">
+        <div
+          className="relative flex items-center justify-center cursor-col-resize"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            dragRef.current = true;
+          }}
+        >
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+          <div className="absolute h-10 w-1.5 rounded-full bg-border" />
+        </div>
+
+        <div className="space-y-5 p-3 lg:overflow-y-auto">
           {!selectedProblem && (
             <p className="text-sm text-muted-foreground">Choose a problem to start writing notes.</p>
           )}
           {selectedProblem && (
             <>
               <div className="space-y-2">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold">{selectedProblem.title}</h2>
-                    <p className="text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold">{selectedProblem.title}</h2>
+                    <span className="text-xs text-muted-foreground">
                       {platformLabel(selectedProblem.platform)} • {difficultyLabel(selectedProblem.difficulty)} • Updated {formatDate(selectedProblem.updated_at)}
-                    </p>
+                    </span>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={currentStatus} />
                     <Button
                       variant={selectedImportant ? "primary" : "outline"}
                       size="sm"
@@ -655,60 +697,68 @@ export const DsaList = () => {
                       <Star className={cn("h-3.5 w-3.5", selectedImportant && "fill-white")} />
                       {selectedImportant ? "Important" : "Mark important"}
                     </Button>
-                    <Link
-                      to={`/dsa/${selectedProblem.id}`}
-                      className="text-xs text-accent hover:text-accent-hover"
-                    >
-                      Open full detail
-                    </Link>
-                    {selectedProblem.link && (
-                      <a
-                        href={selectedProblem.link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-accent hover:text-accent-hover"
-                      >
-                        Problem link
-                      </a>
-                    )}
                   </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <Link to={`/dsa/${selectedProblem.id}`} className="text-accent hover:text-accent-hover">
+                    Open full detail
+                  </Link>
+                  {selectedProblem.link && (
+                    <a
+                      href={selectedProblem.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent hover:text-accent-hover"
+                    >
+                      Problem link
+                    </a>
+                  )}
                 </div>
                 <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
                   {selectedProblem.statement || "Add the full statement when you have it handy."}
                 </div>
+                <p className="text-xs text-muted-foreground">Last attempt: {lastAttemptMap[selectedProblem.id] ?? "—"}</p>
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Bucket labels</p>
-                <div className="flex flex-wrap gap-2">
-                  {selectedBuckets.map((bucket) => (
-                    <span
-                      key={bucket}
-                      className={cn(badgeBase, "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400")}
-                    >
-                      {bucket}
-                      <button
-                        type="button"
-                        onClick={() => removeBucket(selectedProblem.id, bucket)}
-                        className="ml-2 text-[11px] text-muted-foreground hover:text-foreground"
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Buckets
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedBuckets.map((bucket) => (
+                      <span
+                        key={bucket}
+                        className={cn(
+                          badgeBase,
+                          "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                        )}
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  {selectedBuckets.length === 0 && (
-                    <span className="text-xs text-muted-foreground">No buckets yet.</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    value={bucketInput}
-                    onChange={(event) => setBucketInput(event.target.value)}
-                    placeholder="Add bucket label"
-                  />
-                  <Button variant="outline" onClick={handleAddBucket}>
-                    Add bucket
-                  </Button>
+                        {bucket}
+                        <button
+                          type="button"
+                          onClick={() => removeBucket(selectedProblem.id, bucket)}
+                          className="ml-2 text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {selectedBuckets.length === 0 && (
+                      <span className="text-xs text-muted-foreground">No buckets yet.</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+                    <Input
+                      value={bucketInput}
+                      onChange={(event) => setBucketInput(event.target.value)}
+                      placeholder="Add bucket"
+                      className="h-8 text-xs sm:w-40"
+                    />
+                    <Button variant="outline" size="sm" onClick={handleAddBucket}>
+                      Add
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -762,21 +812,23 @@ export const DsaList = () => {
                       placeholder="Explain the approach and complexity tradeoffs."
                       className="min-h-[100px]"
                     />
-                    <Textarea
-                      value={approach.code}
-                      onChange={(event) => updateApproach(approach.id, { code: event.target.value })}
-                      placeholder="Code snippet"
-                      className="min-h-[120px] font-mono text-xs"
-                    />
                   </div>
                 ))}
               </div>
-              <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Saved notes</p>
-                <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                  {selectedProblem.solution_notes || "No saved notes yet."}
+              <CodeSnippetsPanel
+                source={selectedProblem.solution_notes}
+                onPersist={handlePersistSnippets}
+              />
+              {!hasSavedSnippets && (
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Saved notes
+                  </p>
+                  <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
+                    {selectedProblem.solution_notes || "No saved notes yet."}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>

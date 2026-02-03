@@ -21,8 +21,8 @@ export const navItems: NavItem[] = [
 ];
 
 export const breadcrumbLabels: Record<string, string> = {
-  dsa: "DSA",
-  design: "System Design",
+  dsa: "DSA Sheet",
+  design: "Design Sheet",
   reviews: "Reviews",
   sessions: "Study Sessions",
 };

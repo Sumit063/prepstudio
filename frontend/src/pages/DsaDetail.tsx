@@ -16,6 +16,7 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
+import { CodeSnippetsPanel } from "../components/dsa/CodeSnippetsPanel";
 import {
   createProblemAttempt,
   deleteDsaProblem,
@@ -167,6 +168,14 @@ export const DsaDetail = () => {
       setActionError(err instanceof Error ? err.message : "Failed to delete problem");
     }
   };
+
+  const handlePersistSnippets = async (payload: string) => {
+    if (!problem) return;
+    const updated = await updateDsaProblem(problem.id, { solution_notes: payload });
+    setProblem(updated);
+    setEditForm((prev) => ({ ...prev, solution_notes: updated.solution_notes }));
+  };
+
 
   if (loading) {
     return (
@@ -361,7 +370,7 @@ export const DsaDetail = () => {
           <CardTitle>Attempts</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-hidden">
+          <div className="max-h-[360px] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -394,6 +403,18 @@ export const DsaDetail = () => {
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Code snippets</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CodeSnippetsPanel
+            source={problem.solution_notes}
+            onPersist={handlePersistSnippets}
+          />
         </CardContent>
       </Card>
 

@@ -137,40 +137,42 @@ export const StudySessions = () => {
           <CardTitle>Recent sessions</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Focus</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
+          <div className="max-h-[360px] overflow-y-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Loading sessions...
-                  </TableCell>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Focus</TableHead>
+                  <TableHead>Notes</TableHead>
                 </TableRow>
-              )}
-              {sessions.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell>{formatDate(session.date)}</TableCell>
-                  <TableCell>{session.duration_minutes}m</TableCell>
-                  <TableCell>{session.focus_area}</TableCell>
-                  <TableCell className="text-muted-foreground">{session.notes}</TableCell>
-                </TableRow>
-              ))}
-              {!loading && sessions.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No sessions yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Loading sessions...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {sessions.map((session) => (
+                  <TableRow key={session.id}>
+                    <TableCell>{formatDate(session.date)}</TableCell>
+                    <TableCell>{session.duration_minutes}m</TableCell>
+                    <TableCell>{session.focus_area}</TableCell>
+                    <TableCell className="text-muted-foreground">{session.notes}</TableCell>
+                  </TableRow>
+                ))}
+                {!loading && sessions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      No sessions yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

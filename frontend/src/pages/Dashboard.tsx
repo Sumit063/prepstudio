@@ -184,7 +184,7 @@ export const Dashboard = () => {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-hidden">
+          <div className="max-h-[320px] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
