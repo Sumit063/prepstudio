@@ -1,9 +1,10 @@
-﻿import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -14,8 +15,9 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
-import { createDesignTopic, deleteDesignTopic, listDesignTopics, updateDesignTopic } from "../lib/api";
+import { createDesignTopic, listDesignTopics } from "../lib/api";
 import type { DesignTopic } from "../lib/api";
+import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
 
 const categories = [
@@ -30,6 +32,27 @@ const categories = [
 
 type CategoryValue = (typeof categories)[number]["value"];
 
+type SheetMeta = Record<number, { important: boolean; done: boolean; buckets: string[] }>;
+
+const badgeBase =
+  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
+
+const readSheetMeta = (): SheetMeta => {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = window.localStorage.getItem("designSheetMeta");
+    if (!stored) return {};
+    return JSON.parse(stored) as SheetMeta;
+  } catch {
+    return {};
+  }
+};
+
+const writeSheetMeta = (meta: SheetMeta) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("designSheetMeta", JSON.stringify(meta));
+};
+
 const emptyForm = {
   title: "",
   category: "HLD" as CategoryValue,
@@ -39,16 +62,17 @@ const emptyForm = {
 };
 
 export const Design = () => {
+  const navigate = useNavigate();
   const [topics, setTopics] = useState<DesignTopic[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryValue>("HLD");
-  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [editForm, setEditForm] = useState(emptyForm);
-  const [savingEdit, setSavingEdit] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sheetMeta, setSheetMeta] = useState<SheetMeta>(() => readSheetMeta());
+  const [importantFilter, setImportantFilter] = useState("All");
+  const [bucketFilter, setBucketFilter] = useState("All");
 
   useEffect(() => {
     let active = true;
@@ -75,6 +99,30 @@ export const Design = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setSheetMeta((prev) => {
+      const next = { ...prev };
+      topics.forEach((topic) => {
+        if (!next[topic.id]) {
+          next[topic.id] = { important: false, done: false, buckets: [] };
+        }
+      });
+      return next;
+    });
+  }, [topics]);
+
+  useEffect(() => {
+    writeSheetMeta(sheetMeta);
+  }, [sheetMeta]);
+
+  const bucketOptions = useMemo(() => {
+    const all = new Set<string>();
+    Object.values(sheetMeta).forEach((meta) => {
+      meta.buckets.forEach((bucket) => all.add(bucket));
+    });
+    return Array.from(all).sort();
+  }, [sheetMeta]);
+
   const topicsByCategory = useMemo(() => {
     return categories.reduce((acc, category) => {
       acc[category.value] = topics.filter((topic) => topic.category === category.value);
@@ -82,31 +130,26 @@ export const Design = () => {
     }, {} as Record<CategoryValue, DesignTopic[]>);
   }, [topics]);
 
-  useEffect(() => {
-    const list = topicsByCategory[activeCategory] ?? [];
-    if (list.length === 0) {
-      setSelectedTopicId(null);
-      return;
-    }
-    if (!selectedTopicId || !list.find((topic) => topic.id === selectedTopicId)) {
-      setSelectedTopicId(list[0].id);
-    }
-  }, [activeCategory, topicsByCategory, selectedTopicId]);
+  const filteredTopicsByCategory = useMemo(() => {
+    return categories.reduce((acc, category) => {
+      let list = topicsByCategory[category.value] ?? [];
+      if (importantFilter === "Important") {
+        list = list.filter((topic) => sheetMeta[topic.id]?.important);
+      }
+      if (bucketFilter !== "All") {
+        list = list.filter((topic) => sheetMeta[topic.id]?.buckets.includes(bucketFilter));
+      }
+      acc[category.value] = list;
+      return acc;
+    }, {} as Record<CategoryValue, DesignTopic[]>);
+  }, [topicsByCategory, importantFilter, bucketFilter, sheetMeta]);
 
-  const activeTopics = topicsByCategory[activeCategory] ?? [];
-  const selectedTopic = activeTopics.find((topic) => topic.id === selectedTopicId) ?? activeTopics[0];
-
-  useEffect(() => {
-    if (selectedTopic) {
-      setEditForm({
-        title: selectedTopic.title,
-        category: selectedTopic.category as CategoryValue,
-        tags: selectedTopic.tags.join(", "),
-        notes_markdown: selectedTopic.notes_markdown,
-        tradeoffs: selectedTopic.tradeoffs,
-      });
-    }
-  }, [selectedTopic]);
+  const tracker = useMemo(() => {
+    const total = topics.length;
+    const activeCount = topicsByCategory[activeCategory]?.length ?? 0;
+    const withNotes = topics.filter((topic) => topic.notes_markdown?.trim()).length;
+    return { total, activeCount, withNotes };
+  }, [topics, topicsByCategory, activeCategory]);
 
   const handleCreate = async () => {
     setSaving(true);
@@ -134,130 +177,144 @@ export const Design = () => {
     }
   };
 
-  const handleUpdate = async () => {
-    if (!selectedTopic) return;
-    setSavingEdit(true);
-    setActionError(null);
-    try {
-      const updated = await updateDesignTopic(selectedTopic.id, {
-        title: editForm.title,
-        category: editForm.category,
-        tags: editForm.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        notes_markdown: editForm.notes_markdown,
-        tradeoffs: editForm.tradeoffs,
-      });
-      setTopics((prev) => prev.map((topic) => (topic.id === updated.id ? updated : topic)));
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to update topic");
-    } finally {
-      setSavingEdit(false);
-    }
+  const toggleImportant = (topicId: number) => {
+    setSheetMeta((prev) => {
+      const current = prev[topicId] ?? { important: false, done: false, buckets: [] };
+      return { ...prev, [topicId]: { ...current, important: !current.important } };
+    });
   };
 
-  const handleDelete = async () => {
-    if (!selectedTopic) return;
-    if (!window.confirm("Delete this topic?")) return;
-    try {
-      await deleteDesignTopic(selectedTopic.id);
-      setTopics((prev) => prev.filter((topic) => topic.id !== selectedTopic.id));
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to delete topic");
-    }
+  const toggleDone = (topicId: number) => {
+    setSheetMeta((prev) => {
+      const current = prev[topicId] ?? { important: false, done: false, buckets: [] };
+      return { ...prev, [topicId]: { ...current, done: !current.done } };
+    });
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">System Design</p>
-          <h1 className="text-2xl font-semibold">Knowledge base</h1>
-        </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4" />
-              Add topic
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add design topic</DialogTitle>
-              <DialogDescription>Capture architecture notes and tradeoffs.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-3">
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Title</label>
-                <Input
-                  value={form.title}
-                  onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  placeholder="Rate limiter"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Category</label>
-                  <Select
-                    value={form.category}
-                    onChange={(event) =>
-                      setForm({ ...form, category: event.target.value as CategoryValue })
-                    }
-                  >
-                    {categories.map((category) => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Tags</label>
-                  <Input
-                    value={form.tags}
-                    onChange={(event) => setForm({ ...form, tags: event.target.value })}
-                    placeholder="redis, tokens"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Notes</label>
-                <Textarea
-                  value={form.notes_markdown}
-                  onChange={(event) => setForm({ ...form, notes_markdown: event.target.value })}
-                  placeholder="Add architecture notes"
-                />
-              </div>
-              <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Tradeoffs</label>
-                <Textarea
-                  value={form.tradeoffs}
-                  onChange={(event) => setForm({ ...form, tradeoffs: event.target.value })}
-                  placeholder="Latency vs cost"
-                />
-              </div>
-              {actionError && (
-                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  {actionError}
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="ghost">Cancel</Button>
-              <Button onClick={handleCreate} disabled={saving}>
-                {saving ? "Saving..." : "Save topic"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
+    <div className="space-y-4">
       {error && (
         <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
           Error: {error}
         </div>
       )}
+      <div className="rounded-md border border-border bg-surface px-2 py-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-baseline gap-2">
+              <span>Total</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.total}</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span>In category</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.activeCount}</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span>With notes</span>
+              <span className="text-sm font-semibold text-foreground">{tracker.withNotes}</span>
+            </div>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap">
+            <Select
+              value={importantFilter}
+              onChange={(event) => setImportantFilter(event.target.value)}
+              className="h-8 text-xs min-w-[140px]"
+            >
+              <option value="All">All topics</option>
+              <option value="Important">Important only</option>
+            </Select>
+            <Select
+              value={bucketFilter}
+              onChange={(event) => setBucketFilter(event.target.value)}
+              className="h-8 text-xs min-w-[140px]"
+            >
+              <option value="All">All buckets</option>
+              {bucketOptions.map((bucket) => (
+                <option key={bucket} value={bucket}>
+                  {bucket}
+                </option>
+              ))}
+            </Select>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0" aria-label="Add topic">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add design topic</DialogTitle>
+                  <DialogDescription>Capture architecture notes and tradeoffs.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3">
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Title</label>
+                    <Input
+                      value={form.title}
+                      onChange={(event) => setForm({ ...form, title: event.target.value })}
+                      placeholder="Rate limiter"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Category</label>
+                      <Select
+                        value={form.category}
+                        onChange={(event) =>
+                          setForm({ ...form, category: event.target.value as CategoryValue })
+                        }
+                      >
+                        {categories.map((category) => (
+                          <option key={category.value} value={category.value}>
+                            {category.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Tags</label>
+                      <Input
+                        value={form.tags}
+                        onChange={(event) => setForm({ ...form, tags: event.target.value })}
+                        placeholder="redis, tokens"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Notes</label>
+                    <Textarea
+                      value={form.notes_markdown}
+                      onChange={(event) => setForm({ ...form, notes_markdown: event.target.value })}
+                      placeholder="Add architecture notes"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground">Tradeoffs</label>
+                    <Textarea
+                      value={form.tradeoffs}
+                      onChange={(event) => setForm({ ...form, tradeoffs: event.target.value })}
+                      placeholder="Latency vs cost"
+                    />
+                  </div>
+                  {actionError && (
+                    <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      {actionError}
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="ghost">Cancel</Button>
+                  </DialogClose>
+                  <Button onClick={handleCreate} disabled={saving}>
+                    {saving ? "Saving..." : "Save topic"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </div>
 
       <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CategoryValue)}>
         <TabsList>
@@ -270,149 +327,108 @@ export const Design = () => {
 
         {categories.map((category) => (
           <TabsContent key={category.value} value={category.value}>
-            <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Topics</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {loading && (
-                    <p className="text-xs text-muted-foreground">Loading topics...</p>
-                  )}
-                  {(topicsByCategory[category.value] ?? []).map((topic) => (
-                    <button
+            <div className="rounded-md border border-border bg-surface p-2 lg:flex lg:h-[calc(100vh-200px)] lg:flex-col">
+              <div className="space-y-2 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+                {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
+                {(filteredTopicsByCategory[category.value] ?? []).map((topic) => {
+                  const meta = sheetMeta[topic.id] ?? { important: false, done: false, buckets: [] };
+                  return (
+                    <div
                       key={topic.id}
-                      onClick={() => setSelectedTopicId(topic.id)}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                        topic.id === selectedTopicId
-                          ? "border-accent bg-muted"
-                          : "border-border hover:bg-muted"
-                      }`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/design/${topic.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigate(`/design/${topic.id}`);
+                        }
+                      }}
+                      className="flex w-full items-start justify-between gap-3 rounded-md border border-border px-3 py-2 text-left transition hover:bg-muted"
                     >
-                      <div className="font-medium">{topic.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Updated {formatDate(topic.updated_at)}
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={meta.done}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            toggleDone(topic.id);
+                          }}
+                          className="mt-1"
+                        />
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-sm font-medium text-foreground">{topic.title}</div>
+                            {meta.done && (
+                              <span
+                                className={cn(
+                                  badgeBase,
+                                  "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                )}
+                              >
+                                Done
+                              </span>
+                            )}
+                            {meta.important && (
+                              <span
+                                className={cn(
+                                  badgeBase,
+                                  "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                )}
+                              >
+                                Important
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Updated {formatDate(topic.updated_at)}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {meta.buckets.map((bucket) => (
+                              <span
+                                key={bucket}
+                                className={cn(
+                                  badgeBase,
+                                  "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                                )}
+                              >
+                                {bucket}
+                              </span>
+                            ))}
+                            {topic.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className={cn(badgeBase, "border-border bg-surface text-muted-foreground")}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </button>
-                  ))}
-                  {!loading && (topicsByCategory[category.value] ?? []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No topics yet.</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{selectedTopic?.title ?? "Select a topic"}</CardTitle>
-                    {selectedTopic && (
-                      <div className="flex items-center gap-2">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="outline">Edit</Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Edit topic</DialogTitle>
-                              <DialogDescription>Update design notes and tradeoffs.</DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-3">
-                              <div className="grid gap-1">
-                                <label className="text-xs text-muted-foreground">Title</label>
-                                <Input
-                                  value={editForm.title}
-                                  onChange={(event) =>
-                                    setEditForm({ ...editForm, title: event.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="grid gap-1">
-                                  <label className="text-xs text-muted-foreground">Category</label>
-                                  <Select
-                                    value={editForm.category}
-                                    onChange={(event) =>
-                                      setEditForm({
-                                        ...editForm,
-                                        category: event.target.value as CategoryValue,
-                                      })
-                                    }
-                                  >
-                                    {categories.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </Select>
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs text-muted-foreground">Tags</label>
-                                  <Input
-                                    value={editForm.tags}
-                                    onChange={(event) =>
-                                      setEditForm({ ...editForm, tags: event.target.value })
-                                    }
-                                  />
-                                </div>
-                              </div>
-                              <div className="grid gap-1">
-                                <label className="text-xs text-muted-foreground">Notes</label>
-                                <Textarea
-                                  value={editForm.notes_markdown}
-                                  onChange={(event) =>
-                                    setEditForm({ ...editForm, notes_markdown: event.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-1">
-                                <label className="text-xs text-muted-foreground">Tradeoffs</label>
-                                <Textarea
-                                  value={editForm.tradeoffs}
-                                  onChange={(event) =>
-                                    setEditForm({ ...editForm, tradeoffs: event.target.value })
-                                  }
-                                />
-                              </div>
-                              {actionError && (
-                                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-                                  {actionError}
-                                </div>
-                              )}
-                            </div>
-                            <DialogFooter>
-                              <Button variant="ghost">Cancel</Button>
-                              <Button onClick={handleUpdate} disabled={savingEdit}>
-                                {savingEdit ? "Saving..." : "Save changes"}
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                        <Button variant="outline" onClick={handleDelete}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-md border border-border bg-muted p-3 text-sm text-muted-foreground">
-                    {selectedTopic?.notes_markdown || "Pick a topic to view notes."}
-                  </div>
-                  <div className="rounded-md border border-border bg-surface p-3 text-sm text-muted-foreground">
-                    {selectedTopic?.tradeoffs || "Tradeoffs not captured yet."}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedTopic?.tags ?? []).map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleImportant(topic.id);
+                        }}
+                        className="rounded-md text-muted-foreground hover:text-foreground"
+                        aria-label="Toggle important"
                       >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                        <Star
+                          className={cn(
+                            "h-4 w-4",
+                            meta.important ? "text-amber-500 fill-amber-500" : "text-muted-foreground"
+                          )}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+                {!loading && (filteredTopicsByCategory[category.value] ?? []).length === 0 && (
+                  <p className="text-xs text-muted-foreground">No topics yet.</p>
+                )}
+              </div>
             </div>
           </TabsContent>
         ))}

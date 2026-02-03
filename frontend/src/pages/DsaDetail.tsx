@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -15,6 +16,7 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
+import { CodeSnippetsPanel } from "../components/dsa/CodeSnippetsPanel";
 import {
   createProblemAttempt,
   deleteDsaProblem,
@@ -35,6 +37,12 @@ const formatPlatform = (platform: DSAProblem["platform"]) => {
   if (platform === "LEETCODE") return "LeetCode";
   if (platform === "GFG") return "GFG";
   return "Custom";
+};
+
+const formatDifficulty = (difficulty: number) => {
+  if (difficulty <= 2) return "Easy";
+  if (difficulty === 3) return "Medium";
+  return "Hard";
 };
 
 const defaultEditForm = {
@@ -161,6 +169,14 @@ export const DsaDetail = () => {
     }
   };
 
+  const handlePersistSnippets = async (payload: string) => {
+    if (!problem) return;
+    const updated = await updateDsaProblem(problem.id, { solution_notes: payload });
+    setProblem(updated);
+    setEditForm((prev) => ({ ...prev, solution_notes: updated.solution_notes }));
+  };
+
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -240,11 +256,11 @@ export const DsaDetail = () => {
                         setEditForm({ ...editForm, difficulty: Number(event.target.value) })
                       }
                     >
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5">5</option>
+                    <option value="1">Easy (1)</option>
+                    <option value="2">Easy (2)</option>
+                    <option value="3">Medium (3)</option>
+                    <option value="4">Hard (4)</option>
+                    <option value="5">Hard (5)</option>
                     </Select>
                   </div>
                   <div className="grid gap-1">
@@ -289,7 +305,9 @@ export const DsaDetail = () => {
                 )}
               </div>
               <DialogFooter>
-                <Button variant="ghost">Cancel</Button>
+                <DialogClose asChild>
+                  <Button variant="ghost">Cancel</Button>
+                </DialogClose>
                 <Button onClick={handleUpdate} disabled={savingEdit}>
                   {savingEdit ? "Saving..." : "Save changes"}
                 </Button>
@@ -319,11 +337,26 @@ export const DsaDetail = () => {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Difficulty</p>
-            <p className="text-sm font-medium">{problem.difficulty}</p>
+            <p className="text-sm font-medium">{formatDifficulty(problem.difficulty)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Tags</p>
             <p className="text-sm font-medium">{problem.tags.join(", ") || "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Link</p>
+            {problem.link ? (
+              <a
+                href={problem.link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-accent hover:text-accent-hover"
+              >
+                Open problem
+              </a>
+            ) : (
+              <p className="text-sm font-medium">—</p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Last updated</p>
@@ -337,7 +370,7 @@ export const DsaDetail = () => {
           <CardTitle>Attempts</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-hidden">
+          <div className="max-h-[360px] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -370,6 +403,18 @@ export const DsaDetail = () => {
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Code snippets</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CodeSnippetsPanel
+            source={problem.solution_notes}
+            onPersist={handlePersistSnippets}
+          />
         </CardContent>
       </Card>
 

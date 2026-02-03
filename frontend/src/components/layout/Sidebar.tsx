@@ -1,20 +1,33 @@
-﻿import { NavLink } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { NavLink } from "react-router-dom";
 import { navItems } from "../../app/routes";
 import { cn } from "../../lib/cn";
 
-export const Sidebar = () => {
+type SidebarProps = {
+  collapsed: boolean;
+  onToggle: () => void;
+};
+
+export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
   return (
-    <aside className="fixed inset-y-0 left-0 flex w-64 flex-col border-r border-border bg-surface">
-      <div className="flex h-16 items-center gap-2 border-b border-border px-4">
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 flex flex-col border-r border-border bg-surface transition-[width] duration-200",
+        collapsed ? "w-12" : "w-52"
+      )}
+    >
+      <div className="flex h-16 items-center gap-2 border-b border-border px-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-muted text-xs font-semibold">
           PS
         </div>
-        <div>
-          <p className="text-sm font-semibold">PrepStudio</p>
-          <p className="text-xs text-muted-foreground">Learning workspace</p>
-        </div>
+        {!collapsed && (
+          <div>
+            <p className="text-sm font-semibold">PrepStudio</p>
+            <p className="text-xs text-muted-foreground">Learning workspace</p>
+          </div>
+        )}
       </div>
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav className="flex-1 space-y-1 px-2 py-4">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -22,11 +35,13 @@ export const Sidebar = () => {
               key={item.path}
               to={item.path}
               end={item.path === "/"}
+              title={item.label}
               className={({ isActive }) =>
                 cn(
                   "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm",
                   "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  isActive && "bg-muted text-foreground"
+                  isActive && "bg-muted text-foreground",
+                  collapsed && "justify-center px-2"
                 )
               }
             >
@@ -36,17 +51,26 @@ export const Sidebar = () => {
                     <span className="absolute left-0 top-0 h-full w-1 rounded-r-sm bg-accent" />
                   )}
                   <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  {!collapsed && <span>{item.label}</span>}
                 </>
               )}
             </NavLink>
           );
         })}
       </nav>
-      <div className="border-t border-border px-4 py-4 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Today</p>
-        <p>2 reviews due • 1 design note updated</p>
-      </div>
+      {!collapsed && (
+        <div className="border-t border-border px-4 py-4 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Today</p>
+          <p>2 reviews due • 1 design note updated</p>
+        </div>
+      )}
+      <button
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+      </button>
     </aside>
   );
 };

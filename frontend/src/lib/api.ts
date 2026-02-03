@@ -47,7 +47,7 @@ export type DesignTopic = {
   tags: string[];
   notes_markdown: string;
   tradeoffs: string;
-  references_json: string[];
+  references_json: Array<string | { label?: string; url?: string }>;
   created_at: string;
   updated_at: string;
 };

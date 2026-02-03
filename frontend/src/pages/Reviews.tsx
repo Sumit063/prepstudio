@@ -91,42 +91,44 @@ export const Reviews = () => {
           <CardTitle>Upcoming queue</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Item</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Next review</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
+          <div className="max-h-[360px] overflow-y-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Loading reviews...
-                  </TableCell>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Due</TableHead>
+                  <TableHead>Next review</TableHead>
                 </TableRow>
-              )}
-              {reviews.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="text-muted-foreground">{typeLabel(item.item_type)}</TableCell>
-                  <TableCell>{item.title}</TableCell>
-                  <TableCell>{item.dueLabel}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {formatDate(item.next_review_at)}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!loading && reviews.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No reviews due.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      Loading reviews...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {reviews.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="text-muted-foreground">{typeLabel(item.item_type)}</TableCell>
+                    <TableCell>{item.title}</TableCell>
+                    <TableCell>{item.dueLabel}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(item.next_review_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!loading && reviews.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      No reviews due.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
