@@ -1,9 +1,16 @@
-﻿from django.core.validators import MaxValueValidator, MinValueValidator
+﻿from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
 class Tag(models.Model):
-    name = models.CharField(max_length=64, unique=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tags"
+    )
+    name = models.CharField(max_length=64)
+
+    class Meta:
+        unique_together = ("owner", "name")
 
     def __str__(self) -> str:
         return self.name
@@ -15,6 +22,9 @@ class DSAProblem(models.Model):
         GFG = "GFG", "GFG"
         CUSTOM = "CUSTOM", "Custom"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="dsa_problems"
+    )
     title = models.CharField(max_length=200)
     platform = models.CharField(max_length=20, choices=Platform.choices, default=Platform.LEETCODE)
     link = models.URLField(blank=True)
@@ -37,6 +47,9 @@ class DSAAttempt(models.Model):
         PARTIAL = "PARTIAL", "Partial"
         SOLVED = "SOLVED", "Solved"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="dsa_attempts"
+    )
     problem = models.ForeignKey(DSAProblem, related_name="attempts", on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UNSOLVED)
     time_taken_minutes = models.PositiveIntegerField(default=0)
@@ -58,6 +71,9 @@ class DesignTopic(models.Model):
         SCALING = "SCALING", "Scaling"
         CONSISTENCY = "CONSISTENCY", "Consistency"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="design_topics"
+    )
     title = models.CharField(max_length=200)
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.HLD)
     tags = models.ManyToManyField(Tag, related_name="design_topics", blank=True)
@@ -77,6 +93,9 @@ class StudySession(models.Model):
         DESIGN = "DESIGN", "Design"
         MIXED = "MIXED", "Mixed"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="study_sessions"
+    )
     date = models.DateField()
     duration_minutes = models.PositiveIntegerField()
     focus_area = models.CharField(max_length=20, choices=FocusArea.choices, default=FocusArea.MIXED)
@@ -92,6 +111,9 @@ class ReviewItem(models.Model):
         DSA_PROBLEM = "DSA_PROBLEM", "DSA Problem"
         DESIGN_TOPIC = "DESIGN_TOPIC", "Design Topic"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="review_items"
+    )
     item_type = models.CharField(max_length=20, choices=ItemType.choices)
     ref_id = models.PositiveIntegerField()
     next_review_at = models.DateTimeField()
@@ -110,6 +132,9 @@ class AuditEvent(models.Model):
         SUCCESS = "SUCCESS", "Success"
         FAIL = "FAIL", "Fail"
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="audit_events"
+    )
     source = models.CharField(max_length=10, choices=Source.choices)
     tool_name = models.CharField(max_length=120)
     input_summary = models.TextField()

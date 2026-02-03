@@ -1,4 +1,6 @@
-﻿export const API_BASE_URL =
+﻿import { getAccessToken, getRefreshToken } from "./auth";
+
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -7,6 +9,13 @@ type ApiOptions = {
   method?: HttpMethod;
   data?: unknown;
   signal?: AbortSignal;
+};
+
+export type AuthTokens = {
+  access: string;
+  refresh: string;
+  username?: string;
+  email?: string;
 };
 
 export type Paginated<T> = {
@@ -85,11 +94,17 @@ export type AnalyticsSummary = {
 
 const apiFetch = async <T>(path: string, options: ApiOptions = {}): Promise<T> => {
   const { method = "GET", data, signal } = options;
+  const token = getAccessToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     signal,
   });
@@ -176,3 +191,33 @@ export const getDueReviews = (days = 0) =>
 
 export const getAnalyticsSummary = (days = 30) =>
   apiFetch<AnalyticsSummary>(`/api/analytics/summary${buildQuery({ days })}`);
+
+export const registerUser = (data: { username: string; password: string; email?: string }) =>
+  apiFetch<{ id: number; username: string; email: string }>("/api/auth/register", {
+    method: "POST",
+    data,
+  });
+
+export const loginUser = (data: { username: string; password: string }) =>
+  apiFetch<AuthTokens>("/api/auth/token", {
+    method: "POST",
+    data,
+  });
+
+export const refreshToken = (refresh?: string) =>
+  apiFetch<AuthTokens>("/api/auth/token/refresh", {
+    method: "POST",
+    data: { refresh: refresh ?? getRefreshToken() },
+  });
+
+export const logoutUser = (refresh?: string) =>
+  apiFetch<{ detail: string }>("/api/auth/logout", {
+    method: "POST",
+    data: { refresh: refresh ?? getRefreshToken() },
+  });
+
+export const loginWithGoogle = (credential: string) =>
+  apiFetch<AuthTokens>("/api/auth/google", {
+    method: "POST",
+    data: { credential },
+  });
