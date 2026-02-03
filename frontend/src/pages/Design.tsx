@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link2, Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Star, Trash2 } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Button } from "../components/ui/Button";
@@ -19,6 +19,7 @@ import { Select } from "../components/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
 import { createDesignTopic, deleteDesignTopic, listDesignTopics, updateDesignTopic } from "../lib/api";
 import type { DesignTopic } from "../lib/api";
+import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
 
 const categories = [
@@ -52,8 +53,17 @@ type CanvasEdge = {
   to: number;
 };
 
+type BucketMap = Record<number, string[]>;
+
+type ImportantMap = Record<number, boolean>;
+
+type DoneMap = Record<number, boolean>;
+
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 64;
+
+const badgeBase =
+  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
 
 const emptyForm = {
   title: "",
@@ -77,6 +87,12 @@ export const Design = () => {
   const [topicDrafts, setTopicDrafts] = useState<Record<number, string>>({});
   const [referencesByTopic, setReferencesByTopic] = useState<Record<number, ReferenceItem[]>>({});
   const [referenceDraft, setReferenceDraft] = useState({ label: "", url: "" });
+  const [sheetChecks, setSheetChecks] = useState<DoneMap>({});
+  const [importantMap, setImportantMap] = useState<ImportantMap>({});
+  const [bucketMap, setBucketMap] = useState<BucketMap>({});
+  const [bucketInput, setBucketInput] = useState("");
+  const [importantFilter, setImportantFilter] = useState("All");
+  const [bucketFilter, setBucketFilter] = useState("All");
 
   useEffect(() => {
     let active = true;
@@ -103,6 +119,44 @@ export const Design = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setSheetChecks((prev) => {
+      const next = { ...prev };
+      topics.forEach((topic) => {
+        if (next[topic.id] === undefined) {
+          next[topic.id] = false;
+        }
+      });
+      return next;
+    });
+    setImportantMap((prev) => {
+      const next = { ...prev };
+      topics.forEach((topic) => {
+        if (next[topic.id] === undefined) {
+          next[topic.id] = false;
+        }
+      });
+      return next;
+    });
+    setBucketMap((prev) => {
+      const next = { ...prev };
+      topics.forEach((topic) => {
+        if (!next[topic.id]) {
+          next[topic.id] = [];
+        }
+      });
+      return next;
+    });
+  }, [topics]);
+
+  const bucketOptions = useMemo(() => {
+    const all = new Set<string>();
+    Object.values(bucketMap).forEach((buckets) => {
+      buckets.forEach((bucket) => all.add(bucket));
+    });
+    return Array.from(all).sort();
+  }, [bucketMap]);
+
   const topicsByCategory = useMemo(() => {
     return categories.reduce((acc, category) => {
       acc[category.value] = topics.filter((topic) => topic.category === category.value);
@@ -110,8 +164,22 @@ export const Design = () => {
     }, {} as Record<CategoryValue, DesignTopic[]>);
   }, [topics]);
 
+  const filteredTopicsByCategory = useMemo(() => {
+    return categories.reduce((acc, category) => {
+      let list = topicsByCategory[category.value] ?? [];
+      if (importantFilter === "Important") {
+        list = list.filter((topic) => importantMap[topic.id]);
+      }
+      if (bucketFilter !== "All") {
+        list = list.filter((topic) => bucketMap[topic.id]?.includes(bucketFilter));
+      }
+      acc[category.value] = list;
+      return acc;
+    }, {} as Record<CategoryValue, DesignTopic[]>);
+  }, [topicsByCategory, importantFilter, bucketFilter, importantMap, bucketMap]);
+
   useEffect(() => {
-    const list = topicsByCategory[activeCategory] ?? [];
+    const list = filteredTopicsByCategory[activeCategory] ?? [];
     if (list.length === 0) {
       setSelectedTopicId(null);
       return;
@@ -119,9 +187,9 @@ export const Design = () => {
     if (!selectedTopicId || !list.find((topic) => topic.id === selectedTopicId)) {
       setSelectedTopicId(list[0].id);
     }
-  }, [activeCategory, topicsByCategory, selectedTopicId]);
+  }, [activeCategory, filteredTopicsByCategory, selectedTopicId]);
 
-  const activeTopics = topicsByCategory[activeCategory] ?? [];
+  const activeTopics = filteredTopicsByCategory[activeCategory] ?? [];
   const selectedTopic = activeTopics.find((topic) => topic.id === selectedTopicId) ?? activeTopics[0];
   const selectedTopicIdValue = selectedTopic?.id ?? null;
 
@@ -197,6 +265,10 @@ export const Design = () => {
   const activeReferences = selectedTopicIdValue
     ? referencesByTopic[selectedTopicIdValue] ?? []
     : [];
+
+  const selectedBuckets = selectedTopicIdValue ? bucketMap[selectedTopicIdValue] ?? [] : [];
+  const selectedImportant = selectedTopicIdValue ? importantMap[selectedTopicIdValue] ?? false : false;
+  const selectedDone = selectedTopicIdValue ? sheetChecks[selectedTopicIdValue] ?? false : false;
 
   const handleCreate = async () => {
     setSaving(true);
@@ -278,6 +350,33 @@ export const Design = () => {
     setReferencesByTopic((prev) => ({
       ...prev,
       [selectedTopicIdValue]: (prev[selectedTopicIdValue] ?? []).filter((ref) => ref.id !== refId),
+    }));
+  };
+
+  const toggleImportant = (topicId: number) => {
+    setImportantMap((prev) => ({ ...prev, [topicId]: !prev[topicId] }));
+  };
+
+  const toggleDone = (topicId: number) => {
+    setSheetChecks((prev) => ({ ...prev, [topicId]: !prev[topicId] }));
+  };
+
+  const handleAddBucket = () => {
+    if (!selectedTopicIdValue) return;
+    const trimmed = bucketInput.trim();
+    if (!trimmed) return;
+    setBucketMap((prev) => {
+      const current = prev[selectedTopicIdValue] ?? [];
+      if (current.includes(trimmed)) return prev;
+      return { ...prev, [selectedTopicIdValue]: [...current, trimmed] };
+    });
+    setBucketInput("");
+  };
+
+  const removeBucket = (topicId: number, bucket: string) => {
+    setBucketMap((prev) => ({
+      ...prev,
+      [topicId]: (prev[topicId] ?? []).filter((item) => item !== bucket),
     }));
   };
 
@@ -425,35 +524,121 @@ export const Design = () => {
                   <div className="flex items-center justify-between">
                     <CardTitle>{category.label} sheet</CardTitle>
                     <span className="text-xs text-muted-foreground">
-                      {(topicsByCategory[category.value] ?? []).length} topics
+                      {(filteredTopicsByCategory[category.value] ?? []).length} topics
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
-                  {(topicsByCategory[category.value] ?? []).map((topic) => (
-                    <button
-                      key={topic.id}
-                      onClick={() => setSelectedTopicId(topic.id)}
-                      className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left ${
-                        topic.id === selectedTopicId
-                          ? "border-accent bg-muted"
-                          : "border-border hover:bg-muted"
-                      }`}
+                <CardContent className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Select
+                      value={importantFilter}
+                      onChange={(event) => setImportantFilter(event.target.value)}
                     >
-                      <div>
-                        <div className="text-sm font-medium text-foreground">{topic.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Updated {formatDate(topic.updated_at)}
+                      <option value="All">All topics</option>
+                      <option value="Important">Important only</option>
+                    </Select>
+                    <Select value={bucketFilter} onChange={(event) => setBucketFilter(event.target.value)}>
+                      <option value="All">All buckets</option>
+                      {bucketOptions.map((bucket) => (
+                        <option key={bucket} value={bucket}>
+                          {bucket}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
+                  {(filteredTopicsByCategory[category.value] ?? []).map((topic) => {
+                    const isImportant = importantMap[topic.id];
+                    const isDone = sheetChecks[topic.id];
+                    const buckets = bucketMap[topic.id] ?? [];
+                    return (
+                      <div
+                        key={topic.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedTopicId(topic.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedTopicId(topic.id);
+                          }
+                        }}
+                        className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left ${
+                          topic.id === selectedTopicId
+                            ? "border-accent bg-muted"
+                            : "border-border hover:bg-muted"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isDone ?? false}
+                            onChange={(event) => {
+                              event.stopPropagation();
+                              toggleDone(topic.id);
+                            }}
+                            className="mt-1"
+                          />
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-sm font-medium text-foreground">{topic.title}</div>
+                              {isDone && (
+                                <span className={cn(badgeBase, "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400")}>
+                                  Done
+                                </span>
+                              )}
+                              {isImportant && (
+                                <span className={cn(badgeBase, "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+                                  Important
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Updated {formatDate(topic.updated_at)}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {buckets.map((bucket) => (
+                                <span
+                                  key={bucket}
+                                  className={cn(
+                                    badgeBase,
+                                    "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                                  )}
+                                >
+                                  {bucket}
+                                </span>
+                              ))}
+                              {topic.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className={cn(badgeBase, "border-border bg-surface text-muted-foreground")}
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {topic.tags.join(" • ") || "No tags"}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleImportant(topic.id);
+                          }}
+                          className="rounded-md border border-border p-1 text-muted-foreground hover:bg-background"
+                          aria-label="Toggle important"
+                        >
+                          <Star
+                            className={cn(
+                              "h-4 w-4",
+                              isImportant ? "text-amber-500 fill-amber-500" : "text-muted-foreground"
+                            )}
+                          />
+                        </button>
                       </div>
-                      <span className="text-[11px] text-muted-foreground">{topic.category}</span>
-                    </button>
-                  ))}
-                  {!loading && (topicsByCategory[category.value] ?? []).length === 0 && (
+                    );
+                  })}
+                  {!loading && (filteredTopicsByCategory[category.value] ?? []).length === 0 && (
                     <p className="text-xs text-muted-foreground">No topics yet.</p>
                   )}
                 </CardContent>
@@ -472,6 +657,29 @@ export const Design = () => {
                     </div>
                     {selectedTopic && (
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleDone(selectedTopic.id)}
+                          className={cn(
+                            "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10",
+                            selectedDone && "bg-emerald-500 text-white hover:bg-emerald-500"
+                          )}
+                        >
+                          {selectedDone ? "Done" : "Mark done"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleImportant(selectedTopic.id)}
+                          className={cn(
+                            "border-amber-500/40 text-amber-600 hover:bg-amber-500/10",
+                            selectedImportant && "bg-amber-500 text-white hover:bg-amber-500"
+                          )}
+                        >
+                          <Star className={cn("h-3.5 w-3.5", selectedImportant && "fill-white")} />
+                          {selectedImportant ? "Important" : "Mark important"}
+                        </Button>
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button variant="outline" size="sm">Edit</Button>
@@ -569,6 +777,43 @@ export const Design = () => {
                   )}
                   {selectedTopic && (
                     <>
+                      <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Bucket labels</p>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedBuckets.map((bucket) => (
+                            <span
+                              key={bucket}
+                              className={cn(
+                                badgeBase,
+                                "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                              )}
+                            >
+                              {bucket}
+                              <button
+                                type="button"
+                                onClick={() => removeBucket(selectedTopic.id, bucket)}
+                                className="ml-2 text-[11px] text-muted-foreground hover:text-foreground"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          {selectedBuckets.length === 0 && (
+                            <span className="text-xs text-muted-foreground">No buckets yet.</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Input
+                            value={bucketInput}
+                            onChange={(event) => setBucketInput(event.target.value)}
+                            placeholder="Add bucket label"
+                          />
+                          <Button variant="outline" onClick={handleAddBucket}>
+                            Add bucket
+                          </Button>
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Solution page</p>
                         <div className="flex flex-wrap gap-2">

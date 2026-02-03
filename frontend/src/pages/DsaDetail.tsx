@@ -38,6 +38,12 @@ const formatPlatform = (platform: DSAProblem["platform"]) => {
   return "Custom";
 };
 
+const formatDifficulty = (difficulty: number) => {
+  if (difficulty <= 2) return "Easy";
+  if (difficulty === 3) return "Medium";
+  return "Hard";
+};
+
 const defaultEditForm = {
   title: "",
   platform: "LEETCODE",
@@ -241,11 +247,11 @@ export const DsaDetail = () => {
                         setEditForm({ ...editForm, difficulty: Number(event.target.value) })
                       }
                     >
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5">5</option>
+                    <option value="1">Easy (1)</option>
+                    <option value="2">Easy (2)</option>
+                    <option value="3">Medium (3)</option>
+                    <option value="4">Hard (4)</option>
+                    <option value="5">Hard (5)</option>
                     </Select>
                   </div>
                   <div className="grid gap-1">
@@ -322,7 +328,7 @@ export const DsaDetail = () => {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Difficulty</p>
-            <p className="text-sm font-medium">{problem.difficulty}</p>
+            <p className="text-sm font-medium">{formatDifficulty(problem.difficulty)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Tags</p>

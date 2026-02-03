@@ -1,4 +1,5 @@
-﻿import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { useState } from "react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Header } from "../components/layout/Header";
 import { Sidebar } from "../components/layout/Sidebar";
 import { Dashboard } from "../pages/Dashboard";
@@ -7,13 +8,24 @@ import { DsaDetail } from "../pages/DsaDetail";
 import { DsaList } from "../pages/DsaList";
 import { Reviews } from "../pages/Reviews";
 import { StudySessions } from "../pages/StudySessions";
+import { cn } from "../lib/cn";
 
 const App = () => {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-background text-foreground">
-        <Sidebar />
-        <div className="pl-64">
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((prev) => !prev)}
+        />
+        <div
+          className={cn(
+            "transition-[padding] duration-200",
+            sidebarCollapsed ? "pl-16" : "pl-56"
+          )}
+        >
           <Header />
           <main className="px-6 py-6">
             <div className="mx-auto w-full max-w-6xl">
