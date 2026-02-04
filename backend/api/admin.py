@@ -21,8 +21,8 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(DSAProblem)
 class DSAProblemAdmin(admin.ModelAdmin):
-    list_display = ("title", "owner", "platform", "difficulty", "updated_at")
-    list_filter = ("owner", "platform", "difficulty")
+    list_display = ("title", "owner", "platform", "difficulty", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "platform", "difficulty", "is_global")
     search_fields = ("title",)
     filter_horizontal = ("tags",)
 
@@ -36,8 +36,8 @@ class DSAAttemptAdmin(admin.ModelAdmin):
 
 @admin.register(DesignTopic)
 class DesignTopicAdmin(admin.ModelAdmin):
-    list_display = ("title", "owner", "category", "updated_at")
-    list_filter = ("owner", "category")
+    list_display = ("title", "owner", "category", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "category", "is_global")
     search_fields = ("title",)
     filter_horizontal = ("tags",)
 

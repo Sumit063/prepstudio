@@ -20,6 +20,18 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from .auth_utils import get_request_user
+from .global_dsa import (
+    create_global_problems_for_all_users,
+    derive_global_key,
+    ensure_global_problems_for_user,
+    update_global_problems,
+)
+from .global_design import (
+    create_global_topics_for_all_users,
+    derive_global_key as derive_design_global_key,
+    ensure_global_topics_for_user,
+    update_global_topics,
+)
 from .google_calendar import (
     build_auth_url,
     build_review_event,
@@ -67,7 +79,9 @@ class DSAProblemViewSet(viewsets.ModelViewSet):
 
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
         if search:
-            queryset = queryset.filter(title__icontains=search)
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(tags__name__icontains=search)
+            ).distinct()
 
         platform = self.request.query_params.get("platform")
         if platform:
@@ -83,7 +97,7 @@ class DSAProblemViewSet(viewsets.ModelViewSet):
 
         tags_param = self.request.query_params.get("tags")
         if tags_param:
-            tags = [tag.strip() for tag in tags_param.split(",") if tag.strip()]
+            tags = [tag.strip().lower() for tag in tags_param.split(",") if tag.strip()]
             if tags:
                 queryset = queryset.filter(tags__name__in=tags).distinct()
 
@@ -91,6 +105,80 @@ class DSAProblemViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self._get_owner())
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        owner = self._get_owner()
+        is_global = bool(request.data.get("is_global")) and owner.is_staff
+        if is_global:
+            base_data = {
+                "title": serializer.validated_data.get("title"),
+                "platform": serializer.validated_data.get("platform"),
+                "link": serializer.validated_data.get("link"),
+                "difficulty": serializer.validated_data.get("difficulty"),
+                "bucket_labels": serializer.validated_data.get("bucket_labels", []),
+            }
+            tag_names = serializer.validated_data.get("tags", [])
+            global_key = request.data.get("global_key") or derive_global_key(
+                base_data["title"], base_data.get("link")
+            )
+            if DSAProblem.objects.filter(is_global=True, global_key=global_key).exists():
+                return Response(
+                    {"detail": "Global question already exists."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            create_global_problems_for_all_users(base_data, tag_names, global_key)
+            instance = DSAProblem.objects.filter(owner=owner, global_key=global_key).first()
+            output = self.get_serializer(instance)
+            return Response(output.data, status=status.HTTP_201_CREATED)
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        owner = self._get_owner()
+        if instance.is_global and owner.is_staff:
+            if not instance.global_key:
+                return Response(
+                    {"detail": "Global key missing for this question."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            base_updates = {}
+            for field in ("title", "platform", "link", "difficulty", "bucket_labels"):
+                if field in serializer.validated_data:
+                    base_updates[field] = serializer.validated_data.pop(field)
+            tag_names = serializer.validated_data.pop("tags", None)
+            if serializer.validated_data:
+                serializer.save()
+            if base_updates or tag_names is not None:
+                update_global_problems(instance.global_key, base_updates, tag_names)
+            instance.refresh_from_db()
+            output = self.get_serializer(instance)
+            return Response(output.data)
+
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        owner = self._get_owner()
+        if instance.is_global and not owner.is_staff:
+            raise PermissionDenied("Global questions can only be deleted by an admin.")
+        if instance.is_global and owner.is_staff:
+            if not instance.global_key:
+                return Response(
+                    {"detail": "Global key missing for this question."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            DSAProblem.objects.filter(is_global=True, global_key=instance.global_key).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["get", "post"], url_path="attempts")
     def attempts(self, request, pk=None):
@@ -122,7 +210,9 @@ class DesignTopicViewSet(viewsets.ModelViewSet):
 
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
         if search:
-            queryset = queryset.filter(title__icontains=search)
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(tags__name__icontains=search)
+            ).distinct()
 
         category = self.request.query_params.get("category")
         if category:
@@ -130,7 +220,7 @@ class DesignTopicViewSet(viewsets.ModelViewSet):
 
         tags_param = self.request.query_params.get("tags")
         if tags_param:
-            tags = [tag.strip() for tag in tags_param.split(",") if tag.strip()]
+            tags = [tag.strip().lower() for tag in tags_param.split(",") if tag.strip()]
             if tags:
                 queryset = queryset.filter(tags__name__in=tags).distinct()
 
@@ -138,6 +228,79 @@ class DesignTopicViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self._get_owner())
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        owner = self._get_owner()
+        is_global = bool(request.data.get("is_global")) and owner.is_staff
+        if is_global:
+            base_data = {
+                "title": serializer.validated_data.get("title"),
+                "category": serializer.validated_data.get("category"),
+                "references_json": serializer.validated_data.get("references_json", []),
+                "bucket_labels": serializer.validated_data.get("bucket_labels", []),
+            }
+            tag_names = serializer.validated_data.get("tags", [])
+            global_key = request.data.get("global_key") or derive_design_global_key(
+                base_data["title"]
+            )
+            if DesignTopic.objects.filter(is_global=True, global_key=global_key).exists():
+                return Response(
+                    {"detail": "Global topic already exists."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            create_global_topics_for_all_users(base_data, tag_names, global_key)
+            instance = DesignTopic.objects.filter(owner=owner, global_key=global_key).first()
+            output = self.get_serializer(instance)
+            return Response(output.data, status=status.HTTP_201_CREATED)
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        owner = self._get_owner()
+        if instance.is_global and owner.is_staff:
+            if not instance.global_key:
+                return Response(
+                    {"detail": "Global key missing for this topic."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            base_updates = {}
+            for field in ("title", "category", "references_json", "bucket_labels"):
+                if field in serializer.validated_data:
+                    base_updates[field] = serializer.validated_data.pop(field)
+            tag_names = serializer.validated_data.pop("tags", None)
+            if serializer.validated_data:
+                serializer.save()
+            if base_updates or tag_names is not None:
+                update_global_topics(instance.global_key, base_updates, tag_names)
+            instance.refresh_from_db()
+            output = self.get_serializer(instance)
+            return Response(output.data)
+
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        owner = self._get_owner()
+        if instance.is_global and not owner.is_staff:
+            raise PermissionDenied("Global topics can only be deleted by an admin.")
+        if instance.is_global and owner.is_staff:
+            if not instance.global_key:
+                return Response(
+                    {"detail": "Global key missing for this topic."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            DesignTopic.objects.filter(is_global=True, global_key=instance.global_key).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
 
 
 class StudySessionViewSet(viewsets.ModelViewSet):
@@ -383,6 +546,8 @@ class RegisterView(APIView):
         serializer = UserRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        ensure_global_problems_for_user(user)
+        ensure_global_topics_for_user(user)
         payload = {
             "id": user.id,
             "username": user.username,
@@ -447,6 +612,8 @@ class GoogleAuthView(APIView):
                 user.first_name = parts[0]
                 user.last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
             user.save()
+            ensure_global_problems_for_user(user)
+            ensure_global_topics_for_user(user)
         elif full_name and not user.first_name:
             parts = full_name.split()
             user.first_name = parts[0]

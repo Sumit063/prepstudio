@@ -37,6 +37,8 @@ export type DSAProblem = {
   workspace_notes: string;
   approaches_json: Array<{ id?: number | string; title?: string; notes?: string }>;
   bucket_labels: string[];
+  is_global: boolean;
+  global_key: string | null;
   is_important: boolean;
   is_done: boolean;
   attempts_count: number;
@@ -63,6 +65,8 @@ export type DesignTopic = {
   tradeoffs: string;
   references_json: Array<string | { label?: string; url?: string }>;
   bucket_labels: string[];
+  is_global: boolean;
+  global_key: string | null;
   is_important: boolean;
   is_done: boolean;
   canvas_json: Record<string, unknown>;
@@ -178,7 +182,9 @@ export const listDsaProblems = (params: {
   difficulty_max?: number;
   tags?: string;
 } = {}) =>
-  apiFetch<Paginated<DSAProblem>>(`/api/dsa/problems/${buildQuery(params)}`);
+  apiFetch<Paginated<DSAProblem>>(
+    `/api/dsa/problems/${buildQuery({ page_size: 1000, ...params })}`
+  );
 
 export const getDsaProblem = (id: number) => apiFetch<DSAProblem>(`/api/dsa/problems/${id}/`);
 
@@ -202,7 +208,9 @@ export const listDesignTopics = (params: {
   category?: string;
   tags?: string;
 } = {}) =>
-  apiFetch<Paginated<DesignTopic>>(`/api/design/topics/${buildQuery(params)}`);
+  apiFetch<Paginated<DesignTopic>>(
+    `/api/design/topics/${buildQuery({ page_size: 1000, ...params })}`
+  );
 
 export const getDesignTopic = (id: number) => apiFetch<DesignTopic>(`/api/design/topics/${id}/`);
 

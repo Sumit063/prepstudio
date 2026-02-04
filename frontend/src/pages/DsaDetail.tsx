@@ -45,6 +45,13 @@ const formatDifficulty = (difficulty: number) => {
   return "Hard";
 };
 
+const normalizeLabel = (value: string) => value.trim().toLowerCase();
+
+const filterBucketTags = (tags: string[], buckets: string[]) => {
+  const bucketSet = new Set(buckets.map(normalizeLabel));
+  return tags.filter((tag) => !bucketSet.has(normalizeLabel(tag)));
+};
+
 const defaultEditForm = {
   title: "",
   platform: "LEETCODE",
@@ -88,12 +95,16 @@ export const DsaDetail = () => {
         if (!active) return;
         setProblem(problemData);
         setAttempts(attemptData);
+        const visibleTags = filterBucketTags(
+          problemData.tags ?? [],
+          problemData.bucket_labels ?? []
+        );
         setEditForm({
           title: problemData.title,
           platform: problemData.platform,
           link: problemData.link ?? "",
           difficulty: problemData.difficulty,
-          tags: problemData.tags.join(", "),
+          tags: visibleTags.join(", "),
           statement: problemData.statement,
           solution_notes: problemData.solution_notes,
         });
@@ -139,15 +150,20 @@ export const DsaDetail = () => {
     setSavingEdit(true);
     setActionError(null);
     try {
+      const bucketLabels = problem.bucket_labels ?? [];
+      const filteredTags = filterBucketTags(
+        editForm.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        bucketLabels
+      );
       const updated = await updateDsaProblem(problem.id, {
         title: editForm.title,
         platform: editForm.platform as DSAProblem["platform"],
         link: editForm.link,
         difficulty: Number(editForm.difficulty),
-        tags: editForm.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+        tags: filteredTags,
         statement: editForm.statement,
         solution_notes: editForm.solution_notes,
       });
@@ -343,7 +359,9 @@ export const DsaDetail = () => {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Tags</p>
-            <p className="text-sm font-medium">{problem.tags.join(", ") || "—"}</p>
+            <p className="text-sm font-medium">
+              {filterBucketTags(problem.tags ?? [], problem.bucket_labels ?? []).join(", ") || "—"}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Link</p>

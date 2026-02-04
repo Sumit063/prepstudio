@@ -34,6 +34,8 @@ class TagListField(serializers.ListField):
 
 class DSAProblemSerializer(serializers.ModelSerializer):
     tags = TagListField(required=False)
+    is_global = serializers.BooleanField(read_only=True)
+    global_key = serializers.CharField(read_only=True)
     attempts_count = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -50,25 +52,47 @@ class DSAProblemSerializer(serializers.ModelSerializer):
             "workspace_notes",
             "approaches_json",
             "bucket_labels",
+            "is_global",
+            "global_key",
             "is_important",
             "is_done",
             "attempts_count",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at", "attempts_count"]
+        read_only_fields = ["created_at", "updated_at", "attempts_count", "is_global", "global_key"]
 
     def create(self, validated_data):
+        bucket_labels = self._normalize_labels(validated_data.get("bucket_labels", []))
+        validated_data["bucket_labels"] = bucket_labels
         tags = validated_data.pop("tags", [])
+        merged_tags = self._merge_bucket_tags(bucket_labels, tags)
         instance = super().create(validated_data)
-        self._sync_tags(instance, tags)
+        self._sync_tags(instance, merged_tags)
         return instance
 
     def update(self, instance, validated_data):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
+        if instance.is_global and not is_staff:
+            for field in ("title", "platform", "link", "difficulty", "bucket_labels", "tags"):
+                validated_data.pop(field, None)
+
         tags = validated_data.pop("tags", None)
+        bucket_labels_input = validated_data.get("bucket_labels", None)
+        if bucket_labels_input is not None:
+            bucket_labels = self._normalize_labels(bucket_labels_input)
+            validated_data["bucket_labels"] = bucket_labels
+        else:
+            bucket_labels = list(instance.bucket_labels or [])
         instance = super().update(instance, validated_data)
-        if tags is not None:
-            self._sync_tags(instance, tags)
+        if tags is not None or bucket_labels_input is not None:
+            existing_tags = [tag.name for tag in instance.tags.all()]
+            merged_tags = self._merge_bucket_tags(
+                bucket_labels,
+                tags if tags is not None else existing_tags,
+            )
+            self._sync_tags(instance, merged_tags)
         return instance
 
     def _sync_tags(self, instance: DSAProblem, tags: list[str]) -> None:
@@ -76,11 +100,32 @@ class DSAProblemSerializer(serializers.ModelSerializer):
         owner = get_request_user(request) if request else None
         if owner is None:
             raise serializers.ValidationError("Authenticated user required for tags.")
-        normalized = [tag.strip() for tag in tags if tag.strip()]
+        normalized = [tag.strip().lower() for tag in tags if tag.strip()]
         tag_objs = [
             Tag.objects.get_or_create(owner=owner, name=name)[0] for name in normalized
         ]
         instance.tags.set(tag_objs)
+
+    def _normalize_labels(self, labels: Iterable[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for label in labels or []:
+            clean = str(label).strip()
+            if not clean:
+                continue
+            key = clean.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(key)
+        return normalized
+
+    def _merge_bucket_tags(self, buckets: Iterable[str], tags: Iterable[str]) -> list[str]:
+        bucket_labels = self._normalize_labels(buckets)
+        tag_list = self._normalize_labels(tags)
+        bucket_set = {label.lower() for label in bucket_labels}
+        filtered_tags = [tag for tag in tag_list if tag.lower() not in bucket_set]
+        return filtered_tags + bucket_labels
 
 
 class DSAAttemptSerializer(serializers.ModelSerializer):
@@ -101,6 +146,8 @@ class DSAAttemptSerializer(serializers.ModelSerializer):
 
 class DesignTopicSerializer(serializers.ModelSerializer):
     tags = TagListField(required=False)
+    is_global = serializers.BooleanField(read_only=True)
+    global_key = serializers.CharField(read_only=True)
 
     class Meta:
         model = DesignTopic
@@ -113,25 +160,47 @@ class DesignTopicSerializer(serializers.ModelSerializer):
             "tradeoffs",
             "references_json",
             "bucket_labels",
+            "is_global",
+            "global_key",
             "is_important",
             "is_done",
             "canvas_json",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "is_global", "global_key"]
 
     def create(self, validated_data):
+        bucket_labels = self._normalize_labels(validated_data.get("bucket_labels", []))
+        validated_data["bucket_labels"] = bucket_labels
         tags = validated_data.pop("tags", [])
+        merged_tags = self._merge_bucket_tags(bucket_labels, tags)
         instance = super().create(validated_data)
-        self._sync_tags(instance, tags)
+        self._sync_tags(instance, merged_tags)
         return instance
 
     def update(self, instance, validated_data):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
+        if instance.is_global and not is_staff:
+            for field in ("title", "category", "references_json", "bucket_labels", "tags"):
+                validated_data.pop(field, None)
+
         tags = validated_data.pop("tags", None)
+        bucket_labels_input = validated_data.get("bucket_labels", None)
+        if bucket_labels_input is not None:
+            bucket_labels = self._normalize_labels(bucket_labels_input)
+            validated_data["bucket_labels"] = bucket_labels
+        else:
+            bucket_labels = list(instance.bucket_labels or [])
         instance = super().update(instance, validated_data)
-        if tags is not None:
-            self._sync_tags(instance, tags)
+        if tags is not None or bucket_labels_input is not None:
+            existing_tags = [tag.name for tag in instance.tags.all()]
+            merged_tags = self._merge_bucket_tags(
+                bucket_labels,
+                tags if tags is not None else existing_tags,
+            )
+            self._sync_tags(instance, merged_tags)
         return instance
 
     def _sync_tags(self, instance: DesignTopic, tags: list[str]) -> None:
@@ -139,11 +208,32 @@ class DesignTopicSerializer(serializers.ModelSerializer):
         owner = get_request_user(request) if request else None
         if owner is None:
             raise serializers.ValidationError("Authenticated user required for tags.")
-        normalized = [tag.strip() for tag in tags if tag.strip()]
+        normalized = [tag.strip().lower() for tag in tags if tag.strip()]
         tag_objs = [
             Tag.objects.get_or_create(owner=owner, name=name)[0] for name in normalized
         ]
         instance.tags.set(tag_objs)
+
+    def _normalize_labels(self, labels: Iterable[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for label in labels or []:
+            clean = str(label).strip()
+            if not clean:
+                continue
+            key = clean.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(key)
+        return normalized
+
+    def _merge_bucket_tags(self, buckets: Iterable[str], tags: Iterable[str]) -> list[str]:
+        bucket_labels = self._normalize_labels(buckets)
+        tag_list = self._normalize_labels(tags)
+        bucket_set = {label.lower() for label in bucket_labels}
+        filtered_tags = [tag for tag in tag_list if tag.lower() not in bucket_set]
+        return filtered_tags + bucket_labels
 
 
 class StudySessionSerializer(serializers.ModelSerializer):

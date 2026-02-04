@@ -24,6 +24,8 @@ python -m venv .venv
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py seed_prepstudio --reset
+python manage.py seed_dsa_catalog --file backend/data/dsa_catalog.json
+python manage.py seed_design_catalog --file backend/data/design_catalog.json
 python manage.py runserver
 ```
 
@@ -82,4 +84,6 @@ Production checklist:
 
 ## Notes
 - No auth is required for core UI in dev, but auth is used for user-scoped data.
+- The DSA/System Design catalog seeds read from local JSON files under `backend/data`.
+- Global DSA questions are admin-managed; users can only edit their personal fields (notes, approaches, status).
 - MCP server uses a service token boundary to access the API safely.
