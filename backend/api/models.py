@@ -106,6 +106,7 @@ class StudySession(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="study_sessions"
     )
     date = models.DateField()
+    start_time = models.TimeField(blank=True, null=True)
     duration_minutes = models.PositiveIntegerField()
     focus_area = models.CharField(max_length=20, choices=FocusArea.choices, default=FocusArea.MIXED)
     notes = models.TextField(blank=True)
@@ -131,6 +132,10 @@ class ReviewItem(models.Model):
     ref_id = models.PositiveIntegerField()
     next_review_at = models.DateTimeField()
     interval_days = models.PositiveIntegerField(default=1)
+    calendar_event_id = models.CharField(max_length=255, blank=True)
+    calendar_event_link = models.URLField(blank=True)
+    calendar_error = models.TextField(blank=True)
+    calendar_synced_at = models.DateTimeField(blank=True, null=True)
 
     def __str__(self) -> str:
         return f"{self.item_type} #{self.ref_id}"

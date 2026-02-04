@@ -2,6 +2,7 @@
 import { useLocation } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+import { DateTimePicker } from "../components/ui/DateTimePicker";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
@@ -15,11 +16,23 @@ import {
 import type { CalendarStatus, StudySession } from "../lib/api";
 import { formatDate } from "../lib/format";
 
-const emptyForm = {
-  date: "",
+const pad = (value: number) => String(value).padStart(2, "0");
+
+const toDateString = (value: Date) =>
+  `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+
+const toTimeString = (value: Date) => `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+
+const createEmptyForm = () => ({
+  scheduledAt: new Date(),
   duration_minutes: 60,
   focus_area: "MIXED",
   notes: "",
+});
+
+const formatTime = (value?: string | null) => {
+  if (!value) return "?";
+  return value.slice(0, 5);
 };
 
 export const StudySessions = () => {
@@ -32,7 +45,7 @@ export const StudySessions = () => {
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [calendarNotice, setCalendarNotice] = useState<string | null>(null);
   const [syncToCalendar, setSyncToCalendar] = useState(true);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(createEmptyForm());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -94,17 +107,24 @@ export const StudySessions = () => {
   }, []);
 
   const handleCreate = async () => {
+    if (!form.scheduledAt) {
+      setError("Select a date and time.");
+      return;
+    }
     setSaving(true);
     setError(null);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
       await createStudySession({
-        date: form.date,
+        date: toDateString(form.scheduledAt),
+        start_time: toTimeString(form.scheduledAt),
         duration_minutes: Number(form.duration_minutes),
         focus_area: form.focus_area as StudySession["focus_area"],
         notes: form.notes,
         sync_to_calendar: syncToCalendar && Boolean(calendarStatus?.connected),
+        time_zone: timeZone,
       });
-      setForm(emptyForm);
+      setForm(createEmptyForm());
       const data = await listStudySessions();
       setSessions(data.results);
     } catch (err) {
@@ -207,11 +227,11 @@ export const StudySessions = () => {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="grid gap-1">
-              <label className="text-xs text-muted-foreground">Date</label>
-              <Input
-                type="date"
-                value={form.date}
-                onChange={(event) => setForm({ ...form, date: event.target.value })}
+              <label className="text-xs text-muted-foreground">Date & time</label>
+              <DateTimePicker
+                value={form.scheduledAt}
+                onChange={(value) => setForm({ ...form, scheduledAt: value })}
+                placeholder="Select date and time"
               />
             </div>
             <div className="grid gap-1">
@@ -262,6 +282,7 @@ export const StudySessions = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
+                  <TableHead>Time</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Focus</TableHead>
                   <TableHead>Notes</TableHead>
@@ -271,7 +292,7 @@ export const StudySessions = () => {
               <TableBody>
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
                       Loading sessions...
                     </TableCell>
                   </TableRow>
@@ -279,6 +300,7 @@ export const StudySessions = () => {
                 {sessions.map((session) => (
                   <TableRow key={session.id}>
                     <TableCell>{formatDate(session.date)}</TableCell>
+                    <TableCell>{formatTime(session.start_time)}</TableCell>
                     <TableCell>{session.duration_minutes}m</TableCell>
                     <TableCell>{session.focus_area}</TableCell>
                     <TableCell className="text-muted-foreground">{session.notes}</TableCell>
@@ -302,7 +324,7 @@ export const StudySessions = () => {
                 ))}
                 {!loading && sessions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
                       No sessions yet.
                     </TableCell>
                   </TableRow>

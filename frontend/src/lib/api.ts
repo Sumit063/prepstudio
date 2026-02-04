@@ -73,6 +73,7 @@ export type DesignTopic = {
 export type StudySession = {
   id: number;
   date: string;
+  start_time?: string | null;
   duration_minutes: number;
   focus_area: "DSA" | "DESIGN" | "MIXED";
   notes: string;
@@ -86,6 +87,7 @@ export type StudySession = {
 export type StudySessionInput = Partial<StudySession> & {
   sync_to_calendar?: boolean;
   start_time?: string;
+  time_zone?: string;
 };
 
 export type ReviewItem = {
@@ -94,6 +96,15 @@ export type ReviewItem = {
   ref_id: number;
   next_review_at: string;
   interval_days: number;
+  calendar_event_id?: string;
+  calendar_event_link?: string;
+  calendar_error?: string;
+  calendar_synced_at?: string | null;
+};
+
+export type ReviewItemInput = Partial<ReviewItem> & {
+  sync_to_calendar?: boolean;
+  time_zone?: string;
 };
 
 export type AnalyticsSummary = {
@@ -216,7 +227,7 @@ export const getDueReviews = (days = 0) =>
 export const getAnalyticsSummary = (days = 30) =>
   apiFetch<AnalyticsSummary>(`/api/analytics/summary${buildQuery({ days })}`);
 
-export const createReviewItem = (data: Partial<ReviewItem>) =>
+export const createReviewItem = (data: ReviewItemInput) =>
   apiFetch<ReviewItem>("/api/reviews/", { method: "POST", data });
 
 export const registerUser = (data: { username: string; password: string; email?: string }) =>

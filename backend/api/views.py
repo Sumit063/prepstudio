@@ -22,6 +22,7 @@ from google.oauth2 import id_token as google_id_token
 from .auth_utils import get_request_user
 from .google_calendar import (
     build_auth_url,
+    build_review_event,
     build_session_event,
     exchange_code_for_tokens,
     refresh_access_token,
@@ -154,6 +155,7 @@ class StudySessionViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("No active user scope.")
         session = serializer.save(owner=owner)
         sync_flag = self.request.data.get("sync_to_calendar", True)
+        tz_name = self.request.data.get("time_zone")
         if str(sync_flag).lower() in {"false", "0", "no"}:
             return
 
@@ -166,7 +168,9 @@ class StudySessionViewSet(viewsets.ModelViewSet):
         try:
             token = refresh_access_token(account)
             event_payload = build_session_event(
-                session, start_time=self.request.data.get("start_time")
+                session,
+                start_time=self.request.data.get("start_time"),
+                tz_name=tz_name,
             )
             response = requests.post(
                 f"https://www.googleapis.com/calendar/v3/calendars/{account.calendar_id}/events",
@@ -207,7 +211,45 @@ class ReviewItemViewSet(viewsets.ModelViewSet):
         return ReviewItem.objects.filter(owner=owner).order_by("-next_review_at")
 
     def perform_create(self, serializer):
-        serializer.save(owner=self._get_owner())
+        owner = self._get_owner()
+        review = serializer.save(owner=owner)
+        sync_flag = self.request.data.get("sync_to_calendar", True)
+        tz_name = self.request.data.get("time_zone")
+        if str(sync_flag).lower() in {"false", "0", "no"}:
+            return
+
+        account = GoogleCalendarAccount.objects.filter(owner=owner).first()
+        if not account:
+            review.calendar_error = "Google Calendar not connected."
+            review.save(update_fields=["calendar_error"])
+            return
+
+        try:
+            token = refresh_access_token(account)
+            event_payload = build_review_event(review, tz_name=tz_name)
+            response = requests.post(
+                f"https://www.googleapis.com/calendar/v3/calendars/{account.calendar_id}/events",
+                headers={"Authorization": f"Bearer {token}"},
+                json=event_payload,
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+            review.calendar_event_id = data.get("id", "")
+            review.calendar_event_link = data.get("htmlLink", "")
+            review.calendar_synced_at = timezone.now()
+            review.calendar_error = ""
+            review.save(
+                update_fields=[
+                    "calendar_event_id",
+                    "calendar_event_link",
+                    "calendar_synced_at",
+                    "calendar_error",
+                ]
+            )
+        except Exception as exc:
+            review.calendar_error = str(exc)
+            review.save(update_fields=["calendar_error"])
 
 
 class DueReviewsView(APIView):

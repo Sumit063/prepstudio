@@ -148,18 +148,19 @@ class DesignTopicSerializer(serializers.ModelSerializer):
 
 class StudySessionSerializer(serializers.ModelSerializer):
     sync_to_calendar = serializers.BooleanField(write_only=True, required=False)
-    start_time = serializers.CharField(write_only=True, required=False)
+    time_zone = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = StudySession
         fields = [
             "id",
             "date",
+            "start_time",
             "duration_minutes",
             "focus_area",
             "notes",
             "sync_to_calendar",
-            "start_time",
+            "time_zone",
             "calendar_event_id",
             "calendar_event_link",
             "calendar_error",
@@ -177,14 +178,40 @@ class StudySessionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("sync_to_calendar", None)
-        validated_data.pop("start_time", None)
+        validated_data.pop("time_zone", None)
         return super().create(validated_data)
 
 
 class ReviewItemSerializer(serializers.ModelSerializer):
+    sync_to_calendar = serializers.BooleanField(write_only=True, required=False)
+    time_zone = serializers.CharField(write_only=True, required=False)
+
     class Meta:
         model = ReviewItem
-        fields = ["id", "item_type", "ref_id", "next_review_at", "interval_days"]
+        fields = [
+            "id",
+            "item_type",
+            "ref_id",
+            "next_review_at",
+            "interval_days",
+            "sync_to_calendar",
+            "time_zone",
+            "calendar_event_id",
+            "calendar_event_link",
+            "calendar_error",
+            "calendar_synced_at",
+        ]
+        read_only_fields = [
+            "calendar_event_id",
+            "calendar_event_link",
+            "calendar_error",
+            "calendar_synced_at",
+        ]
+
+    def create(self, validated_data):
+        validated_data.pop("sync_to_calendar", None)
+        validated_data.pop("time_zone", None)
+        return super().create(validated_data)
 
 
 class AuditEventSerializer(serializers.ModelSerializer):

@@ -9,8 +9,9 @@ import requests
 from django.conf import settings
 from django.core import signing
 from django.utils import timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import GoogleCalendarAccount, StudySession
+from .models import GoogleCalendarAccount, ReviewItem, StudySession
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -102,18 +103,29 @@ def revoke_token(token: str) -> None:
         return
 
 
-def build_session_event(session: StudySession, start_time: Optional[str] = None) -> dict:
+def resolve_timezone(tz_name: Optional[str]):
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            pass
+    return timezone.get_current_timezone()
+
+
+def build_session_event(
+    session: StudySession, start_time: Optional[str] = None, tz_name: Optional[str] = None
+) -> dict:
     session_date = session.date
-    default_time = time(9, 0)
+    default_time = session.start_time or time(9, 0)
     if start_time:
         try:
             parts = [int(part) for part in start_time.split(":")]
             default_time = time(parts[0], parts[1] if len(parts) > 1 else 0)
         except (ValueError, IndexError):
-            default_time = time(9, 0)
+            default_time = session.start_time or time(9, 0)
 
     start_dt = datetime.combine(session_date, default_time)
-    tz = timezone.get_current_timezone()
+    tz = resolve_timezone(tz_name)
     start_dt = timezone.make_aware(start_dt, tz)
     end_dt = start_dt + timedelta(minutes=session.duration_minutes or 60)
 
@@ -127,10 +139,33 @@ def build_session_event(session: StudySession, start_time: Optional[str] = None)
         "description": "\n\n".join(description_parts),
         "start": {
             "dateTime": start_dt.isoformat(),
-            "timeZone": settings.TIME_ZONE,
+            "timeZone": tz_name or settings.TIME_ZONE,
         },
         "end": {
             "dateTime": end_dt.isoformat(),
-            "timeZone": settings.TIME_ZONE,
+            "timeZone": tz_name or settings.TIME_ZONE,
+        },
+    }
+
+
+def build_review_event(review: ReviewItem, tz_name: Optional[str] = None) -> dict:
+    start_dt = review.next_review_at
+    tz = resolve_timezone(tz_name)
+    if timezone.is_naive(start_dt):
+        start_dt = timezone.make_aware(start_dt, tz)
+    else:
+        start_dt = start_dt.astimezone(tz)
+    end_dt = start_dt + timedelta(minutes=30)
+    label = "DSA" if review.item_type == ReviewItem.ItemType.DSA_PROBLEM else "Design"
+    return {
+        "summary": f"PrepStudio {label} review",
+        "description": "Scheduled via PrepStudio",
+        "start": {
+            "dateTime": start_dt.isoformat(),
+            "timeZone": tz_name or settings.TIME_ZONE,
+        },
+        "end": {
+            "dateTime": end_dt.isoformat(),
+            "timeZone": tz_name or settings.TIME_ZONE,
         },
     }
