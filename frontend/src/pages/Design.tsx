@@ -15,10 +15,12 @@ import {
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/Tabs";
-import { createDesignTopic, listDesignTopics, updateDesignTopic } from "../lib/api";
+import { createDesignTopic, listMergedDesignTopics, updateDesignTopic } from "../lib/api";
 import type { DesignTopic } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
+import { BuddyBadge } from "../components/buddies/BuddyBadge";
+import { useBuddyContext } from "../contexts/BuddyContext";
 
 const categories = [
   { value: "HLD", label: "HLD" },
@@ -50,8 +52,16 @@ const emptyForm = {
   tradeoffs: "",
 };
 
+const LoadingSpinner = ({ label }: { label: string }) => (
+  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+    {label}
+  </div>
+);
+
 export const Design = () => {
   const navigate = useNavigate();
+  const { version } = useBuddyContext();
   const [topics, setTopics] = useState<DesignTopic[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryValue>("HLD");
   const [loading, setLoading] = useState(true);
@@ -69,7 +79,7 @@ export const Design = () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await listDesignTopics();
+        const data = await listMergedDesignTopics();
         if (!active) return;
         setTopics(data.results);
       } catch (err) {
@@ -86,7 +96,7 @@ export const Design = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [version]);
 
   const bucketOptions = useMemo(() => {
     const all = new Set<string>();
@@ -146,7 +156,7 @@ export const Design = () => {
       await createDesignTopic(payload);
       setForm(emptyForm);
       setCreateOpen(false);
-      const data = await listDesignTopics();
+      const data = await listMergedDesignTopics();
       setTopics(data.results);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to create topic");
@@ -177,12 +187,20 @@ export const Design = () => {
   const toggleImportant = (topicId: number) => {
     const topic = topics.find((item) => item.id === topicId);
     if (!topic) return;
+    if (topic.is_owner === false) {
+      setActionError("Buddy entries are read-only.");
+      return;
+    }
     persistTopicMeta(topicId, { is_important: !topic.is_important });
   };
 
   const toggleDone = (topicId: number) => {
     const topic = topics.find((item) => item.id === topicId);
     if (!topic) return;
+    if (topic.is_owner === false) {
+      setActionError("Buddy entries are read-only.");
+      return;
+    }
     persistTopicMeta(topicId, { is_done: !topic.is_done });
   };
 
@@ -329,7 +347,7 @@ export const Design = () => {
           <TabsContent key={category.value} value={category.value}>
             <div className="rounded-md border border-border bg-surface p-2 lg:flex lg:h-[calc(100vh-200px)] lg:flex-col">
               <div className="space-y-2 lg:flex-1 lg:overflow-y-auto lg:pr-2">
-                {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
+                {loading && <LoadingSpinner label="Loading topics..." />}
                 {(filteredTopicsByCategory[category.value] ?? []).map((topic) => {
                   const buckets = topic.bucket_labels ?? [];
                   const visibleTags = filterBucketTags(topic.tags ?? [], buckets);
@@ -358,6 +376,7 @@ export const Design = () => {
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => event.stopPropagation()}
                           className="mt-1"
+                          disabled={topic.is_owner === false}
                         />
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -369,6 +388,9 @@ export const Design = () => {
                             >
                               {topic.title}
                             </div>
+                            {topic.owner && topic.is_owner === false && (
+                              <BuddyBadge user={topic.owner} size="xs" />
+                            )}
                             {topic.is_done && (
                               <span
                                 className={cn(
@@ -424,6 +446,7 @@ export const Design = () => {
                         }}
                         className="rounded-md text-muted-foreground hover:text-foreground"
                         aria-label="Toggle important"
+                        disabled={topic.is_owner === false}
                       >
                         <Star
                           className={cn(

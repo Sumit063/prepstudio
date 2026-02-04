@@ -3,6 +3,7 @@ import "@excalidraw/excalidraw/index.css";
 import type {
   AppState,
   BinaryFiles,
+  ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
@@ -46,23 +47,39 @@ const createMockScene = (): ExcalidrawInitialDataState => ({
   files: {},
 });
 
+const normalizeAppState = (appState?: AppState | null): AppState => {
+  const base =
+    appState && typeof appState === "object"
+      ? (appState as AppState)
+      : (DEFAULT_APP_STATE as AppState);
+  const collaborators =
+    base.collaborators instanceof Map ? base.collaborators : new Map();
+  return { ...base, collaborators };
+};
+
 type SystemDesignCanvasProps = {
   initialScene?: DesignCanvasScene | null;
   onSceneChange?: (scene: DesignCanvasScene) => void;
+  readOnly?: boolean;
 };
 
 const buildInitialScene = (scene: DesignCanvasScene | null | undefined) => {
   if (!scene) return createMockScene();
   return {
     elements: scene.elements ?? [],
-    appState: scene.appState ?? (DEFAULT_APP_STATE as AppState),
+    appState: normalizeAppState(scene.appState),
     files: scene.files ?? {},
   };
 };
 
-export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesignCanvasProps) => {
+export const SystemDesignCanvas = ({
+  initialScene,
+  onSceneChange,
+  readOnly = false,
+}: SystemDesignCanvasProps) => {
   const [fullscreen, setFullscreen] = useState(false);
   const [headerOffset, setHeaderOffset] = useState(96);
+  const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const persistTimerRef = useRef<number | null>(null);
   const lastSceneRef = useRef<DesignCanvasScene | null>(null);
   const initialDataRef = useRef<ExcalidrawInitialDataState | null>(null);
@@ -113,9 +130,11 @@ export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesign
 
   const handleChange = useCallback(
     (nextElements: readonly ExcalidrawElement[], nextAppState: AppState, nextFiles: BinaryFiles) => {
+      if (readOnly) return;
+      const safeAppState = normalizeAppState(nextAppState);
       const normalizedState: DesignCanvasScene = {
         elements: nextElements,
-        appState: nextAppState,
+        appState: safeAppState,
         files: nextFiles,
       };
 
@@ -129,8 +148,17 @@ export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesign
         }
       }, 300);
     },
-    [onSceneChange]
+    [onSceneChange, readOnly]
   );
+
+  const handleClear = () => {
+    if (readOnly || !excalidrawAPI) return;
+    if (!window.confirm("Clear this canvas?")) return;
+    const safeAppState = normalizeAppState(excalidrawAPI.getAppState());
+    const cleared: DesignCanvasScene = { elements: [], appState: safeAppState, files: {} };
+    excalidrawAPI.updateScene(cleared);
+    onSceneChange?.(cleared);
+  };
 
   const containerHeight = fullscreen
     ? "100vh"
@@ -144,7 +172,12 @@ export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesign
       )}
       style={{ height: containerHeight }}
     >
-      <div className="absolute bottom-[38px] right-3 z-10">
+      <div className="absolute bottom-[38px] right-3 z-10 flex items-center gap-2">
+        {!readOnly && (
+          <Button variant="outline" size="sm" onClick={handleClear}>
+            Clear
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => setFullscreen((prev) => !prev)}>
           {fullscreen ? "Exit fullscreen" : "Fullscreen"}
         </Button>
@@ -152,7 +185,10 @@ export const SystemDesignCanvas = ({ initialScene, onSceneChange }: SystemDesign
       <div className="h-full w-full border border-border bg-background">
         <Excalidraw
           initialData={initialData}
+          excalidrawAPI={setExcalidrawAPI}
           onChange={handleChange}
+          viewModeEnabled={readOnly}
+          zenModeEnabled={readOnly}
           UIOptions={{
             canvasActions: {
               changeViewBackgroundColor: true,

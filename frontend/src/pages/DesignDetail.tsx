@@ -21,10 +21,12 @@ import { SystemDesignCanvas } from "../components/SystemDesignCanvas";
 import type { DesignCanvasScene } from "../components/SystemDesignCanvas";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
-import { deleteDesignTopic, getDesignTopic, updateDesignTopic } from "../lib/api";
+import { deleteDesignTopic, updateDesignTopic } from "../lib/api";
 import type { DesignTopic } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
+import { MergedEntryList } from "../components/buddies/MergedEntryList";
+import { useMergedView } from "../hooks/useMergedView";
 
 const categories = [
   { value: "HLD", label: "HLD" },
@@ -102,9 +104,12 @@ const emptyForm = {
 export const DesignDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const topicId = id ? Number(id) : undefined;
+  const { state: mergedState, loading: mergedLoading, error: mergedError } = useMergedView(
+    "design",
+    topicId
+  );
   const [topic, setTopic] = useState<DesignTopic | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [tradeoffsDraft, setTradeoffsDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState(() => JSON.stringify(emptyNoteBlocks));
@@ -129,66 +134,49 @@ export const DesignDetail = () => {
   );
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
-      if (!id) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getDesignTopic(Number(id));
-        if (!active) return;
-        setTopic(data);
-        const visibleTags = filterBucketTags(
-          data.tags ?? [],
-          data.bucket_labels ?? []
-        );
-        setEditForm({
-          title: data.title,
-          category: data.category as CategoryValue,
-          tags: visibleTags.join(", "),
-          notes_markdown: data.notes_markdown,
-          tradeoffs: data.tradeoffs,
-        });
-        setTradeoffsDraft(data.tradeoffs ?? "");
-        const parsedNotes = toNoteBlocks(data.notes_markdown);
-        setNoteBlocks(parsedNotes);
-        setNotesDraft(JSON.stringify(parsedNotes));
-        const normalized = Array.isArray(data.references_json)
-          ? data.references_json.map((ref, index) => {
-              if (typeof ref === "string") {
-                return { id: index + 1, label: ref, url: ref };
-              }
-              if (ref && typeof ref === "object") {
-                const label =
-                  "label" in ref
-                    ? String((ref as { label?: string }).label ?? "Reference")
-                    : "Reference";
-                const url = "url" in ref ? String((ref as { url?: string }).url ?? "") : "";
-                return { id: index + 1, label, url };
-              }
-              return { id: index + 1, label: "Reference", url: "" };
-            })
-          : [];
-        setReferences(normalized);
-        setBucketLabels(data.bucket_labels ?? []);
-        setIsImportant(Boolean(data.is_important));
-        setIsDone(Boolean(data.is_done));
-        setCanvasDraft((data.canvas_json as DesignCanvasScene) ?? null);
-      } catch (err) {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Failed to load topic");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [id]);
+    if (mergedState.kind !== "design" || !mergedState.data) return;
+    const data = mergedState.data.topic;
+    setTopic(data);
+    const visibleTags = filterBucketTags(data.tags ?? [], data.bucket_labels ?? []);
+    setEditForm({
+      title: data.title,
+      category: data.category as CategoryValue,
+      tags: visibleTags.join(", "),
+      notes_markdown: data.notes_markdown,
+      tradeoffs: data.tradeoffs,
+    });
+    setTradeoffsDraft(data.tradeoffs ?? "");
+    const parsedNotes = toNoteBlocks(data.notes_markdown);
+    setNoteBlocks(parsedNotes);
+    setNotesDraft(JSON.stringify(parsedNotes));
+    const normalized = Array.isArray(data.references_json)
+      ? data.references_json.map((ref, index) => {
+          if (typeof ref === "string") {
+            return { id: index + 1, label: ref, url: ref };
+          }
+          if (ref && typeof ref === "object") {
+            const label =
+              "label" in ref
+                ? String((ref as { label?: string }).label ?? "Reference")
+                : "Reference";
+            const url = "url" in ref ? String((ref as { url?: string }).url ?? "") : "";
+            return { id: index + 1, label, url };
+          }
+          return { id: index + 1, label: "Reference", url: "" };
+        })
+      : [];
+    setReferences(normalized);
+    setBucketLabels(data.bucket_labels ?? []);
+    setIsImportant(Boolean(data.is_important));
+    setIsDone(Boolean(data.is_done));
+    setCanvasDraft((data.canvas_json as DesignCanvasScene) ?? null);
+  }, [mergedState]);
+
+  const mergedEntries =
+    mergedState.kind === "design" && mergedState.data ? mergedState.data.entries : [];
+  const currentUserId =
+    mergedState.kind === "design" && mergedState.data ? mergedState.data.current_user_id : undefined;
+  const isOwner = topic ? topic.is_owner !== false : false;
 
   useEffect(() => {
     const computeOffset = () => {
@@ -218,6 +206,10 @@ export const DesignDetail = () => {
   };
 
   const toggleImportant = () => {
+    if (!isOwner) {
+      setActionError("Buddy entries are read-only.");
+      return;
+    }
     const next = !isImportant;
     const fallback = { isImportant, isDone };
     setIsImportant(next);
@@ -225,6 +217,10 @@ export const DesignDetail = () => {
   };
 
   const toggleDone = () => {
+    if (!isOwner) {
+      setActionError("Buddy entries are read-only.");
+      return;
+    }
     const next = !isDone;
     const fallback = { isImportant, isDone };
     setIsDone(next);
@@ -232,6 +228,7 @@ export const DesignDetail = () => {
   };
 
   const handleAddBucket = () => {
+    if (!isOwner) return;
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
     const normalized = normalizeLabel(trimmed);
@@ -243,10 +240,12 @@ export const DesignDetail = () => {
   };
 
   const removeBucket = (bucket: string) => {
+    if (!isOwner) return;
     setBucketLabels((prev) => prev.filter((item) => item !== bucket));
   };
 
   const handleAddReference = () => {
+    if (!isOwner) return;
     if (!referenceDraft.label.trim() && !referenceDraft.url.trim()) return;
     const label = referenceDraft.label.trim() || referenceDraft.url.trim();
     const url = referenceDraft.url.trim();
@@ -255,28 +254,29 @@ export const DesignDetail = () => {
   };
 
   const removeReference = (refId: number) => {
+    if (!isOwner) return;
     setReferences((prev) => prev.filter((ref) => ref.id !== refId));
   };
 
   const handleSave = async () => {
-    if (!topic) return;
+    if (!topic || !isOwner) return;
     setSaving(true);
     setActionError(null);
     try {
-        const payload: Partial<DesignTopic> = {
-          title: editForm.title,
-          category: editForm.category,
-          tags: filterBucketTags(
-            editForm.tags
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-            bucketLabels
-          ),
-          notes_markdown: notesDraft,
-          tradeoffs: tradeoffsDraft,
-          references_json: references.map((ref) => ({ label: ref.label, url: ref.url })),
-          bucket_labels: bucketLabels,
+      const payload: Partial<DesignTopic> = {
+        title: editForm.title,
+        category: editForm.category,
+        tags: filterBucketTags(
+          editForm.tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          bucketLabels
+        ),
+        notes_markdown: notesDraft,
+        tradeoffs: tradeoffsDraft,
+        references_json: references.map((ref) => ({ label: ref.label, url: ref.url })),
+        bucket_labels: bucketLabels,
         is_important: isImportant,
         is_done: isDone,
         canvas_json: canvasDraft ?? {},
@@ -291,7 +291,7 @@ export const DesignDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (!topic) return;
+    if (!topic || !isOwner) return;
     if (!window.confirm("Delete this topic?")) return;
     try {
       await deleteDesignTopic(topic.id);
@@ -301,7 +301,7 @@ export const DesignDetail = () => {
     }
   };
 
-  if (loading) {
+  if (mergedLoading) {
     return (
       <div className="space-y-4">
         <Link to="/design" className="text-sm text-muted-foreground hover:text-foreground">
@@ -342,90 +342,94 @@ export const DesignDetail = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleDone}
-            className={cn(
-              "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10",
-              isDone && "bg-emerald-500 text-white hover:bg-emerald-500"
-            )}
-          >
-            {isDone ? "Done" : "Mark done"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleImportant}
-            className={cn(
-              "border-amber-500/40 text-amber-600 hover:bg-amber-500/10",
-              isImportant && "bg-amber-500 text-white hover:bg-amber-500"
-            )}
-          >
-            <Star className={cn("h-3.5 w-3.5", isImportant && "fill-white")} />
-            {isImportant ? "Important" : "Mark important"}
-          </Button>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">Edit metadata</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit topic</DialogTitle>
-                <DialogDescription>Update title, tags, and category.</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3">
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Title</label>
-                  <Input
-                    value={editForm.title}
-                    onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground">Category</label>
-                    <Select
-                      value={editForm.category}
-                      onChange={(event) =>
-                        setEditForm({ ...editForm, category: event.target.value as CategoryValue })
-                      }
-                    >
-                      {categories.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
+          {isOwner && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleDone}
+                className={cn(
+                  "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10",
+                  isDone && "bg-emerald-500 text-white hover:bg-emerald-500"
+                )}
+              >
+                {isDone ? "Done" : "Mark done"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleImportant}
+                className={cn(
+                  "border-amber-500/40 text-amber-600 hover:bg-amber-500/10",
+                  isImportant && "bg-amber-500 text-white hover:bg-amber-500"
+                )}
+              >
+                <Star className={cn("h-3.5 w-3.5", isImportant && "fill-white")} />
+                {isImportant ? "Important" : "Mark important"}
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">Edit metadata</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit topic</DialogTitle>
+                    <DialogDescription>Update title, tags, and category.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-3">
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Title</label>
+                      <Input
+                        value={editForm.title}
+                        onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Category</label>
+                        <Select
+                          value={editForm.category}
+                          onChange={(event) =>
+                            setEditForm({ ...editForm, category: event.target.value as CategoryValue })
+                          }
+                        >
+                          {categories.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Tags</label>
+                        <Input
+                          value={editForm.tags}
+                          onChange={(event) => setEditForm({ ...editForm, tags: event.target.value })}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground">Tags</label>
-                    <Input
-                      value={editForm.tags}
-                      onChange={(event) => setEditForm({ ...editForm, tags: event.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="ghost">Close</Button>
-                </DialogClose>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Button variant="outline" size="sm" onClick={handleDelete}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save changes"}
-          </Button>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="ghost">Close</Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" size="sm" onClick={handleDelete}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save changes"}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {error && (
+      {mergedError && (
         <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
-          Error: {error}
+          Error: {mergedError}
         </div>
       )}
       {actionError && (
@@ -461,6 +465,7 @@ export const DesignDetail = () => {
               onChange={(event) => setBucketInput(event.target.value)}
               placeholder="Add bucket label"
               className="h-8 text-xs sm:w-48"
+              disabled={!isOwner}
             />
             <Button variant="outline" size="sm" onClick={handleAddBucket}>
               Add bucket
@@ -472,7 +477,8 @@ export const DesignDetail = () => {
       <SystemDesignCanvas
         key={topic.id}
         initialScene={canvasDraft}
-        onSceneChange={setCanvasDraft}
+        onSceneChange={isOwner ? setCanvasDraft : undefined}
+        readOnly={!isOwner}
       />
 
       <div>
@@ -487,9 +493,12 @@ export const DesignDetail = () => {
           <BlockNoteView
             editor={editor}
             theme={isDark ? "dark" : "light"}
+            editable={isOwner}
             onChange={() => {
               // Persist this JSON string later via backend save.
-              setNotesDraft(JSON.stringify(editor.document));
+              if (isOwner) {
+                setNotesDraft(JSON.stringify(editor.document));
+              }
             }}
             className={cn(
               "w-full text-[12px] leading-5",
@@ -511,6 +520,19 @@ export const DesignDetail = () => {
         </div>
       </div>
 
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Merged entries</p>
+        <div className="mt-3">
+          <MergedEntryList
+            entries={mergedEntries}
+            currentUserId={currentUserId}
+            buddyEmptyLabel="No buddy snippets for this topic."
+            onlyBuddies
+            enableFullscreen
+          />
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
           <div>
@@ -520,6 +542,7 @@ export const DesignDetail = () => {
               onChange={(event) => setTradeoffsDraft(event.target.value)}
               placeholder="Latency vs throughput, consistency vs availability"
               className="mt-2 min-h-[280px]"
+              disabled={!isOwner}
             />
           </div>
         </div>
@@ -534,6 +557,7 @@ export const DesignDetail = () => {
                   setReferenceDraft((prev) => ({ ...prev, label: event.target.value }))
                 }
                 placeholder="Label"
+                disabled={!isOwner}
               />
               <Input
                 value={referenceDraft.url}
@@ -541,8 +565,9 @@ export const DesignDetail = () => {
                   setReferenceDraft((prev) => ({ ...prev, url: event.target.value }))
                 }
                 placeholder="https://youtube.com/..."
+                disabled={!isOwner}
               />
-              <Button variant="outline" onClick={handleAddReference}>
+              <Button variant="outline" onClick={handleAddReference} disabled={!isOwner}>
                 <Plus className="h-4 w-4" />
                 Add link
               </Button>
@@ -569,7 +594,7 @@ export const DesignDetail = () => {
                       )}
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => removeReference(ref.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => removeReference(ref.id)} disabled={!isOwner}>
                     Remove
                   </Button>
                 </div>

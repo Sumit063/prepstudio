@@ -13,6 +13,7 @@ import { Register } from "../pages/Register";
 import { Reviews } from "../pages/Reviews";
 import { StudySessions } from "../pages/StudySessions";
 import { cn } from "../lib/cn";
+import { BuddyProvider } from "../contexts/BuddyContext";
 
 const AppShell = ({
   sidebarCollapsed,
@@ -70,10 +71,12 @@ const AppContent = () => {
 
   return (
     <AuthGuard>
-      <AppShell
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
-      />
+      <BuddyProvider>
+        <AppShell
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
+        />
+      </BuddyProvider>
     </AuthGuard>
   );
 };

@@ -58,7 +58,45 @@ from .serializers import (
     StudySessionSerializer,
     UserRegistrationSerializer,
 )
+from .pagination import StandardResultsSetPagination
+from .services.buddy_service import (
+    accept_buddy,
+    list_buddies,
+    remove_buddy,
+    request_buddy,
+    search_users,
+)
+from .services.merge_service import (
+    get_merged_design_list,
+    get_merged_dsa_list,
+    get_merged_problem_detail,
+    get_merged_topic_detail,
+)
 
+def _serialize_owner(user):
+    name = f"{user.first_name} {user.last_name}".strip() or user.username
+    last_active = user.last_login or user.date_joined
+    return {
+        "id": user.id,
+        "name": name,
+        "username": user.username,
+        "avatarUrl": "",
+        "last_active_at": last_active.isoformat() if last_active else None,
+    }
+
+
+def _serialize_problem(problem, viewer):
+    data = DSAProblemSerializer(problem).data
+    data["owner"] = _serialize_owner(problem.owner)
+    data["is_owner"] = problem.owner_id == viewer.id
+    return data
+
+
+def _serialize_topic(topic, viewer):
+    data = DesignTopicSerializer(topic).data
+    data["owner"] = _serialize_owner(topic.owner)
+    data["is_owner"] = topic.owner_id == viewer.id
+    return data
 
 class DSAProblemViewSet(viewsets.ModelViewSet):
     serializer_class = DSAProblemSerializer
@@ -537,6 +575,185 @@ class AuditLogView(APIView):
         serializer.is_valid(raise_exception=True)
         event = serializer.save(owner=owner)
         return Response(AuditEventSerializer(event).data, status=status.HTTP_201_CREATED)
+
+
+class BuddyListView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        return Response({"relationships": list_buddies(owner)})
+
+
+class BuddySearchView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        query = request.query_params.get("query", "")
+        results = search_users(owner, query)
+        return Response({"results": results})
+
+
+class BuddyRequestView(APIView):
+    def post(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        identifier = request.data.get("identifier", "") or request.data.get("email", "")
+        if not identifier:
+            return Response({"detail": "Identifier required."}, status=status.HTTP_400_BAD_REQUEST)
+        relationship = request_buddy(owner, identifier)
+        return Response(relationship, status=status.HTTP_201_CREATED)
+
+
+class BuddyAcceptView(APIView):
+    def post(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        relationship_id = request.data.get("relationship_id")
+        if not relationship_id:
+            return Response({"detail": "Relationship id required."}, status=status.HTTP_400_BAD_REQUEST)
+        relationship = accept_buddy(owner, int(relationship_id))
+        return Response(relationship)
+
+
+class BuddyRemoveView(APIView):
+    def post(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        relationship_id = request.data.get("relationship_id")
+        if not relationship_id:
+            return Response({"detail": "Relationship id required."}, status=status.HTTP_400_BAD_REQUEST)
+        remove_buddy(owner, int(relationship_id))
+        return Response({"detail": "Buddy removed."})
+
+
+class MergedDsaListView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        items = get_merged_dsa_list(owner)
+
+        search = request.query_params.get("search") or request.query_params.get("q")
+        if search:
+            search_lower = search.lower()
+            items = [
+                item
+                for item in items
+                if search_lower in item.title.lower()
+                or any(search_lower in tag.name.lower() for tag in item.tags.all())
+            ]
+
+        diff_min = request.query_params.get("difficulty_min")
+        diff_max = request.query_params.get("difficulty_max")
+        if diff_min:
+            items = [item for item in items if item.difficulty >= int(diff_min)]
+        if diff_max:
+            items = [item for item in items if item.difficulty <= int(diff_max)]
+
+        tags_param = request.query_params.get("tags")
+        if tags_param:
+            tags = [tag.strip().lower() for tag in tags_param.split(",") if tag.strip()]
+            if tags:
+                items = [
+                    item
+                    for item in items
+                    if any(tag.name.lower() in tags for tag in item.tags.all())
+                ]
+
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(items, request)
+        data = [_serialize_problem(item, owner) for item in page]
+        return paginator.get_paginated_response(data)
+
+
+class MergedDesignListView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        items = get_merged_design_list(owner)
+
+        search = request.query_params.get("search") or request.query_params.get("q")
+        if search:
+            search_lower = search.lower()
+            items = [
+                item
+                for item in items
+                if search_lower in item.title.lower()
+                or any(search_lower in tag.name.lower() for tag in item.tags.all())
+            ]
+
+        category = request.query_params.get("category")
+        if category:
+            items = [item for item in items if item.category == category]
+
+        tags_param = request.query_params.get("tags")
+        if tags_param:
+            tags = [tag.strip().lower() for tag in tags_param.split(",") if tag.strip()]
+            if tags:
+                items = [
+                    item
+                    for item in items
+                    if any(tag.name.lower() in tags for tag in item.tags.all())
+                ]
+
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(items, request)
+        data = [_serialize_topic(item, owner) for item in page]
+        return paginator.get_paginated_response(data)
+
+
+class MergedProblemDetailView(APIView):
+    def get(self, request, problem_id: int):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        problem, entries = get_merged_problem_detail(owner, problem_id)
+        payload = {
+            "problem": _serialize_problem(problem, owner),
+            "entries": [
+                {
+                    "id": entry.id,
+                    "type": entry.type,
+                    "content": entry.content,
+                    "language": entry.language,
+                    "createdAt": entry.created_at,
+                    "owner": entry.owner,
+                }
+                for entry in entries
+            ],
+            "current_user_id": owner.id,
+        }
+        return Response(payload)
+
+
+class MergedTopicDetailView(APIView):
+    def get(self, request, topic_id: int):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        topic, entries = get_merged_topic_detail(owner, topic_id)
+        payload = {
+            "topic": _serialize_topic(topic, owner),
+            "entries": [
+                {
+                    "id": entry.id,
+                    "type": entry.type,
+                    "content": entry.content,
+                    "language": entry.language,
+                    "createdAt": entry.created_at,
+                    "owner": entry.owner,
+                }
+                for entry in entries
+            ],
+            "current_user_id": owner.id,
+        }
+        return Response(payload)
 
 
 class RegisterView(APIView):

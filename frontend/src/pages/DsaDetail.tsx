@@ -17,15 +17,16 @@ import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
 import { CodeSnippetsPanel } from "../components/dsa/CodeSnippetsPanel";
+import { MergedEntryList } from "../components/buddies/MergedEntryList";
 import {
   createProblemAttempt,
   deleteDsaProblem,
-  getDsaProblem,
   listProblemAttempts,
   updateDsaProblem,
 } from "../lib/api";
 import type { DSAProblem, DSAAttempt } from "../lib/api";
 import { formatDate } from "../lib/format";
+import { useMergedView } from "../hooks/useMergedView";
 
 const formatStatus = (status: DSAAttempt["status"]) => {
   if (status === "SOLVED") return "Solved";
@@ -65,10 +66,13 @@ const defaultEditForm = {
 export const DsaDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const problemId = id ? Number(id) : undefined;
+  const { state: mergedState, loading: mergedLoading, error: mergedError } = useMergedView(
+    "dsa",
+    problemId
+  );
   const [problem, setProblem] = useState<DSAProblem | null>(null);
   const [attempts, setAttempts] = useState<DSAAttempt[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [attemptForm, setAttemptForm] = useState({
     status: "SOLVED",
     time_taken_minutes: 30,
@@ -82,50 +86,58 @@ export const DsaDetail = () => {
   const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
+    if (mergedState.kind !== "dsa" || !mergedState.data) return;
+    const data = mergedState.data;
+    setProblem(data.problem);
+    const visibleTags = filterBucketTags(
+      data.problem.tags ?? [],
+      data.problem.bucket_labels ?? []
+    );
+    setEditForm({
+      title: data.problem.title,
+      platform: data.problem.platform,
+      link: data.problem.link ?? "",
+      difficulty: data.problem.difficulty,
+      tags: visibleTags.join(", "),
+      statement: data.problem.statement,
+      solution_notes: data.problem.solution_notes,
+    });
+  }, [mergedState]);
+
+  useEffect(() => {
     let active = true;
-    const load = async () => {
-      if (!id) return;
-      setLoading(true);
-      setError(null);
+    const loadAttempts = async () => {
+      if (!problemId || !problem || problem.is_owner === false) {
+        setAttempts([]);
+        return;
+      }
       try {
-        const [problemData, attemptData] = await Promise.all([
-          getDsaProblem(Number(id)),
-          listProblemAttempts(Number(id)),
-        ]);
+        const data = await listProblemAttempts(problemId);
         if (!active) return;
-        setProblem(problemData);
-        setAttempts(attemptData);
-        const visibleTags = filterBucketTags(
-          problemData.tags ?? [],
-          problemData.bucket_labels ?? []
-        );
-        setEditForm({
-          title: problemData.title,
-          platform: problemData.platform,
-          link: problemData.link ?? "",
-          difficulty: problemData.difficulty,
-          tags: visibleTags.join(", "),
-          statement: problemData.statement,
-          solution_notes: problemData.solution_notes,
-        });
-      } catch (err) {
+        setAttempts(data);
+      } catch {
         if (active) {
-          setError(err instanceof Error ? err.message : "Failed to load problem");
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
+          setAttempts([]);
         }
       }
     };
-    load();
+    loadAttempts();
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [problemId, problem]);
+
+  const mergedEntries =
+    mergedState.kind === "dsa" && mergedState.data ? mergedState.data.entries : [];
+  const currentUserId =
+    mergedState.kind === "dsa" && mergedState.data ? mergedState.data.current_user_id : undefined;
+  const isOwner = problem ? problem.is_owner !== false : false;
 
   const handleAddAttempt = async () => {
-    if (!id) return;
+    if (!id || !isOwner) {
+      setActionError("Buddy entries are read-only.");
+      return;
+    }
     setSavingAttempt(true);
     setActionError(null);
     try {
@@ -146,7 +158,7 @@ export const DsaDetail = () => {
   };
 
   const handleUpdate = async () => {
-    if (!problem) return;
+    if (!problem || !isOwner) return;
     setSavingEdit(true);
     setActionError(null);
     try {
@@ -177,7 +189,7 @@ export const DsaDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (!problem) return;
+    if (!problem || !isOwner) return;
     if (!window.confirm("Delete this problem?")) return;
     try {
       await deleteDsaProblem(problem.id);
@@ -188,14 +200,14 @@ export const DsaDetail = () => {
   };
 
   const handlePersistSnippets = async (payload: string) => {
-    if (!problem) return;
+    if (!problem || !isOwner) return;
     const updated = await updateDsaProblem(problem.id, { solution_notes: payload });
     setProblem(updated);
     setEditForm((prev) => ({ ...prev, solution_notes: updated.solution_notes }));
   };
 
 
-  if (loading) {
+  if (mergedLoading) {
     return (
       <div className="space-y-4">
         <Link to="/dsa" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -235,112 +247,116 @@ export const DsaDetail = () => {
           Back to DSA
         </Link>
         <div className="flex items-center gap-2">
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">Edit problem</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit problem</DialogTitle>
-                <DialogDescription>Update metadata and notes.</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3">
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Title</label>
-                  <Input
-                    value={editForm.title}
-                    onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Platform</label>
-                  <Select
-                    value={editForm.platform}
-                    onChange={(event) =>
-                      setEditForm({ ...editForm, platform: event.target.value })
-                    }
-                  >
-                    <option value="LEETCODE">LeetCode</option>
-                    <option value="GFG">GFG</option>
-                    <option value="CUSTOM">Custom</option>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground">Difficulty</label>
-                    <Select
-                      value={String(editForm.difficulty)}
-                      onChange={(event) =>
-                        setEditForm({ ...editForm, difficulty: Number(event.target.value) })
-                      }
-                    >
-                    <option value="1">Easy (1)</option>
-                    <option value="2">Easy (2)</option>
-                    <option value="3">Medium (3)</option>
-                    <option value="4">Hard (4)</option>
-                    <option value="5">Hard (5)</option>
-                    </Select>
+          {isOwner && (
+            <>
+              <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">Edit problem</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit problem</DialogTitle>
+                    <DialogDescription>Update metadata and notes.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-3">
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Title</label>
+                      <Input
+                        value={editForm.title}
+                        onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Platform</label>
+                      <Select
+                        value={editForm.platform}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, platform: event.target.value })
+                        }
+                      >
+                        <option value="LEETCODE">LeetCode</option>
+                        <option value="GFG">GFG</option>
+                        <option value="CUSTOM">Custom</option>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Difficulty</label>
+                        <Select
+                          value={String(editForm.difficulty)}
+                          onChange={(event) =>
+                            setEditForm({ ...editForm, difficulty: Number(event.target.value) })
+                          }
+                        >
+                        <option value="1">Easy (1)</option>
+                        <option value="2">Easy (2)</option>
+                        <option value="3">Medium (3)</option>
+                        <option value="4">Hard (4)</option>
+                        <option value="5">Hard (5)</option>
+                        </Select>
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-xs text-muted-foreground">Tags</label>
+                        <Input
+                          value={editForm.tags}
+                          onChange={(event) => setEditForm({ ...editForm, tags: event.target.value })}
+                          placeholder="arrays, hashmap"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Link</label>
+                      <Input
+                        value={editForm.link}
+                        onChange={(event) => setEditForm({ ...editForm, link: event.target.value })}
+                        placeholder="https://"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Statement</label>
+                      <Textarea
+                        value={editForm.statement}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, statement: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground">Solution notes</label>
+                      <Textarea
+                        value={editForm.solution_notes}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, solution_notes: event.target.value })
+                        }
+                      />
+                    </div>
+                    {actionError && (
+                      <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                        {actionError}
+                      </div>
+                    )}
                   </div>
-                  <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground">Tags</label>
-                    <Input
-                      value={editForm.tags}
-                      onChange={(event) => setEditForm({ ...editForm, tags: event.target.value })}
-                      placeholder="arrays, hashmap"
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Link</label>
-                  <Input
-                    value={editForm.link}
-                    onChange={(event) => setEditForm({ ...editForm, link: event.target.value })}
-                    placeholder="https://"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Statement</label>
-                  <Textarea
-                    value={editForm.statement}
-                    onChange={(event) =>
-                      setEditForm({ ...editForm, statement: event.target.value })
-                    }
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <label className="text-xs text-muted-foreground">Solution notes</label>
-                  <Textarea
-                    value={editForm.solution_notes}
-                    onChange={(event) =>
-                      setEditForm({ ...editForm, solution_notes: event.target.value })
-                    }
-                  />
-                </div>
-                {actionError && (
-                  <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    {actionError}
-                  </div>
-                )}
-              </div>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="ghost">Cancel</Button>
-                </DialogClose>
-                <Button onClick={handleUpdate} disabled={savingEdit}>
-                  {savingEdit ? "Saving..." : "Save changes"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Button variant="outline" onClick={handleDelete}>
-            Delete
-          </Button>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="ghost">Cancel</Button>
+                    </DialogClose>
+                    <Button onClick={handleUpdate} disabled={savingEdit}>
+                      {savingEdit ? "Saving..." : "Save changes"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" onClick={handleDelete}>
+                Delete
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {error && (
+      {mergedError && (
         <div className="rounded-md border border-border bg-muted px-4 py-2 text-sm text-muted-foreground">
-          Error: {error}
+          Error: {mergedError}
         </div>
       )}
 
@@ -433,7 +449,22 @@ export const DsaDetail = () => {
         <CardContent>
           <CodeSnippetsPanel
             source={problem.solution_notes}
-            onPersist={handlePersistSnippets}
+            onPersist={isOwner ? handlePersistSnippets : undefined}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Merged notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MergedEntryList
+            entries={mergedEntries}
+            currentUserId={currentUserId}
+            buddyEmptyLabel="No buddy snippets for this question."
+            onlyBuddies
+            enableFullscreen
           />
         </CardContent>
       </Card>
@@ -493,7 +524,7 @@ export const DsaDetail = () => {
             </div>
           )}
           <div className="mt-4 flex justify-end">
-            <Button onClick={handleAddAttempt} disabled={savingAttempt}>
+            <Button onClick={handleAddAttempt} disabled={savingAttempt || !isOwner}>
               {savingAttempt ? "Saving..." : "Add attempt"}
             </Button>
           </div>

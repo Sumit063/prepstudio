@@ -36,6 +36,15 @@ export type Paginated<T> = {
   results: T[];
 };
 
+export type OwnerSummary = {
+  id: number;
+  name: string;
+  username: string;
+  email?: string;
+  avatarUrl?: string;
+  last_active_at?: string | null;
+};
+
 export type DSAProblem = {
   id: number;
   title: string;
@@ -55,6 +64,8 @@ export type DSAProblem = {
   attempts_count: number;
   created_at: string;
   updated_at: string;
+  owner?: OwnerSummary;
+  is_owner?: boolean;
 };
 
 export type DSAAttempt = {
@@ -83,6 +94,8 @@ export type DesignTopic = {
   canvas_json: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  owner?: OwnerSummary;
+  is_owner?: boolean;
 };
 
 export type StudySession = {
@@ -140,6 +153,36 @@ export type CalendarStatus = {
   connected: boolean;
   email?: string;
   calendar_id?: string;
+};
+
+export type BuddyRelationship = {
+  id: number;
+  status: "PENDING" | "ACCEPTED" | "BLOCKED";
+  direction: "outgoing" | "incoming" | "accepted";
+  created_at: string;
+  updated_at: string;
+  buddy: OwnerSummary;
+};
+
+export type MergedEntry = {
+  id: string;
+  type: string;
+  content: unknown;
+  language: string | null;
+  createdAt: string;
+  owner: OwnerSummary;
+};
+
+export type MergedProblemDetail = {
+  problem: DSAProblem;
+  entries: MergedEntry[];
+  current_user_id: number;
+};
+
+export type MergedTopicDetail = {
+  topic: DesignTopic;
+  entries: MergedEntry[];
+  current_user_id: number;
 };
 
 const requestRefreshToken = async (refreshToken: string): Promise<RefreshPayload | null> => {
@@ -328,3 +371,52 @@ export const getCalendarConnectUrl = () =>
 
 export const disconnectCalendar = () =>
   apiFetch<{ detail: string }>("/api/calendar/disconnect", { method: "POST" });
+
+export const listBuddies = () =>
+  apiFetch<{ relationships: BuddyRelationship[] }>("/api/buddies");
+
+export const searchBuddies = (query: string) =>
+  apiFetch<{ results: OwnerSummary[] }>(`/api/buddies/search${buildQuery({ query })}`);
+
+export const requestBuddy = (identifier: string) =>
+  apiFetch<BuddyRelationship>("/api/buddies/request", {
+    method: "POST",
+    data: { identifier },
+  });
+
+export const acceptBuddy = (relationshipId: number) =>
+  apiFetch<BuddyRelationship>("/api/buddies/accept", {
+    method: "POST",
+    data: { relationship_id: relationshipId },
+  });
+
+export const removeBuddy = (relationshipId: number) =>
+  apiFetch<{ detail: string }>("/api/buddies/remove", {
+    method: "POST",
+    data: { relationship_id: relationshipId },
+  });
+
+export const listMergedDsaProblems = (params: {
+  search?: string;
+  difficulty_min?: number;
+  difficulty_max?: number;
+  tags?: string;
+} = {}) =>
+  apiFetch<Paginated<DSAProblem>>(
+    `/api/merged/dsa/problems${buildQuery({ page_size: 1000, ...params })}`
+  );
+
+export const listMergedDesignTopics = (params: {
+  search?: string;
+  category?: string;
+  tags?: string;
+} = {}) =>
+  apiFetch<Paginated<DesignTopic>>(
+    `/api/merged/design/topics${buildQuery({ page_size: 1000, ...params })}`
+  );
+
+export const getMergedProblemDetail = (id: number) =>
+  apiFetch<MergedProblemDetail>(`/api/merged/problems/${id}`);
+
+export const getMergedTopicDetail = (id: number) =>
+  apiFetch<MergedTopicDetail>(`/api/merged/topics/${id}`);

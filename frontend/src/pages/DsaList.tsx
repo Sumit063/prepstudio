@@ -1,4 +1,4 @@
-import { Plus, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Plus, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/Button";
@@ -14,11 +14,13 @@ import {
 } from "../components/ui/Dialog";
 import { Input, Textarea } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
-import { createDsaProblem, listDsaProblems, listProblemAttempts, updateDsaProblem } from "../lib/api";
+import { createDsaProblem, listMergedDsaProblems, listProblemAttempts, updateDsaProblem } from "../lib/api";
 import type { DSAProblem, DSAAttempt } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatDate } from "../lib/format";
 import { CodeSnippetsPanel, hasSnippetPayload } from "../components/dsa/CodeSnippetsPanel";
+import { BuddyBadge } from "../components/buddies/BuddyBadge";
+import { useBuddyContext } from "../contexts/BuddyContext";
 
 type Approach = {
   id: number;
@@ -36,6 +38,14 @@ type DoneMap = Record<number, boolean>;
 
 const normalizeLabel = (value: string) => value.trim().toLowerCase();
 
+const formatBucketLabel = (value: string) => {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const badgeBase =
+  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium";
+
 const normalizeLabels = (labels: string[]) => {
   const seen = new Set<string>();
   const next: string[] = [];
@@ -48,16 +58,17 @@ const normalizeLabels = (labels: string[]) => {
   return next;
 };
 
-const filterBucketTags = (tags: string[], buckets: string[]) => {
-  const bucketSet = new Set(buckets.map(normalizeLabel));
-  return tags.filter((tag) => !bucketSet.has(normalizeLabel(tag)));
-};
-
 const statusLabel = (status?: DSAAttempt["status"]) => {
   if (status === "SOLVED") return "Solved";
   if (status === "PARTIAL") return "Partial";
   if (status === "UNSOLVED") return "Unsolved";
   return "Unsolved";
+};
+
+const statusTone = (status?: string) => {
+  if (status === "Solved") return "text-emerald-500";
+  if (status === "Partial") return "text-amber-500";
+  return "text-rose-500";
 };
 
 const platformLabel = (platform: DSAProblem["platform"]) => {
@@ -72,45 +83,12 @@ const difficultyLabel = (difficulty: number): DifficultyLevel => {
   return "Hard";
 };
 
-const badgeBase =
-  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
-
-const statusStyles: Record<string, string> = {
-  Solved: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  Partial: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  Unsolved: "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-};
-
-const difficultyStyles: Record<DifficultyLevel, string> = {
-  Easy: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  Medium: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  Hard: "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const classes = statusStyles[status] ?? "border-border text-muted-foreground";
-  return <span className={cn(badgeBase, classes)}>{status}</span>;
-};
-
-const DifficultyBadge = ({ level }: { level: DifficultyLevel }) => {
-  return <span className={cn(badgeBase, difficultyStyles[level])}>{level}</span>;
-};
-
-const BucketBadge = ({ label }: { label: string }) => {
-  return (
-    <span className={cn(badgeBase, "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400")}>
-      {label}
-    </span>
-  );
-};
-
-const TagBadge = ({ label }: { label: string }) => {
-  return (
-    <span className={cn(badgeBase, "border-border bg-surface text-muted-foreground")}>
-      {label}
-    </span>
-  );
-};
+const LoadingSpinner = ({ label }: { label: string }) => (
+  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+    {label}
+  </div>
+);
 
 const emptyForm = {
   title: "",
@@ -123,6 +101,7 @@ const emptyForm = {
 };
 
 export const DsaList = () => {
+  const { version } = useBuddyContext();
   const [problems, setProblems] = useState<DSAProblem[]>([]);
   const [statusMap, setStatusMap] = useState<Record<number, string>>({});
   const [lastAttemptMap, setLastAttemptMap] = useState<Record<number, string>>({});
@@ -141,7 +120,6 @@ export const DsaList = () => {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
   const [approachMap, setApproachMap] = useState<Record<number, Approach[]>>({});
-  const [problemNotes, setProblemNotes] = useState<Record<number, string>>({});
   const [importantMap, setImportantMap] = useState<ImportantMap>({});
   const [doneMap, setDoneMap] = useState<DoneMap>({});
   const [bucketMap, setBucketMap] = useState<BucketMap>({});
@@ -149,6 +127,7 @@ export const DsaList = () => {
   const [leftWidth, setLeftWidth] = useState(320);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef(false);
+  const [openBuckets, setOpenBuckets] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let active = true;
@@ -177,32 +156,14 @@ export const DsaList = () => {
           params.difficulty_max = 5;
         }
 
-        const data = await listDsaProblems(params);
+        const data = await listMergedDsaProblems(params);
         if (!active) return;
         setProblems(data.results);
-
-        const metaResults = await Promise.all(
-          data.results.map(async (problem) => {
-            try {
-              const attempts = await listProblemAttempts(problem.id);
-              const latest = attempts[0];
-              return {
-                id: problem.id,
-                status: statusLabel(latest?.status),
-                lastAttempt: latest?.created_at ? formatDate(latest.created_at) : "—",
-              };
-            } catch {
-              return { id: problem.id, status: "Unsolved", lastAttempt: "—" };
-            }
-          })
-        );
-
-        if (!active) return;
         const statusLookup: Record<number, string> = {};
         const lastAttemptLookup: Record<number, string> = {};
-        metaResults.forEach((item) => {
-          statusLookup[item.id] = item.status;
-          lastAttemptLookup[item.id] = item.lastAttempt;
+        data.results.forEach((problem) => {
+          statusLookup[problem.id] = problem.is_done ? "Solved" : "Unsolved";
+          lastAttemptLookup[problem.id] = "—";
         });
         setStatusMap(statusLookup);
         setLastAttemptMap(lastAttemptLookup);
@@ -220,7 +181,7 @@ export const DsaList = () => {
     return () => {
       active = false;
     };
-  }, [search, difficultyFilter]);
+  }, [search, difficultyFilter, version]);
 
   useEffect(() => {
     setImportantMap((prev) => {
@@ -244,13 +205,6 @@ export const DsaList = () => {
       });
       return next;
     });
-    setProblemNotes((prev) => {
-      const next = { ...prev };
-      problems.forEach((problem) => {
-        next[problem.id] = problem.workspace_notes ?? "";
-      });
-      return next;
-    });
     setApproachMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
@@ -266,6 +220,41 @@ export const DsaList = () => {
       return next;
     });
   }, [problems]);
+
+  useEffect(() => {
+    if (!selectedProblemId) return;
+    const selected = problems.find((problem) => problem.id === selectedProblemId);
+    if (!selected || selected.is_owner === false) return;
+    let active = true;
+    const loadAttempts = async () => {
+      try {
+        const attempts = await listProblemAttempts(selectedProblemId);
+        if (!active) return;
+        const latest = attempts[0];
+        const computedStatus = latest?.status
+          ? statusLabel(latest.status)
+          : selected.is_done
+          ? "Solved"
+          : "Unsolved";
+        setStatusMap((prev) => ({ ...prev, [selectedProblemId]: computedStatus }));
+        setLastAttemptMap((prev) => ({
+          ...prev,
+          [selectedProblemId]: latest?.created_at ? formatDate(latest.created_at) : "—",
+        }));
+      } catch {
+        if (!active) return;
+        setStatusMap((prev) => ({
+          ...prev,
+          [selectedProblemId]: selected.is_done ? "Solved" : "Unsolved",
+        }));
+        setLastAttemptMap((prev) => ({ ...prev, [selectedProblemId]: "—" }));
+      }
+    };
+    loadAttempts();
+    return () => {
+      active = false;
+    };
+  }, [selectedProblemId, problems]);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -322,6 +311,47 @@ export const DsaList = () => {
     }
   }, [filteredProblems, selectedProblemId]);
 
+  const bucketGroups = useMemo(() => {
+    const groups: Record<string, DSAProblem[]> = {};
+    filteredProblems.forEach((problem) => {
+      const buckets = bucketMap[problem.id] ?? [];
+      const assigned = buckets.length ? buckets : ["Unbucketed"];
+      assigned.forEach((bucket) => {
+        if (!groups[bucket]) {
+          groups[bucket] = [];
+        }
+        groups[bucket].push(problem);
+      });
+    });
+    const sortByDifficulty = (items: DSAProblem[]) => {
+      const easy = items.filter((item) => item.difficulty <= 2);
+      const medium = items.filter((item) => item.difficulty === 3);
+      const hard = items.filter((item) => item.difficulty >= 4);
+      const byTitle = (a: DSAProblem, b: DSAProblem) => a.title.localeCompare(b.title);
+      easy.sort(byTitle);
+      medium.sort(byTitle);
+      hard.sort(byTitle);
+      return [...easy, ...medium, ...hard];
+    };
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map((bucket) => ({
+        bucket,
+        items: sortByDifficulty(groups[bucket]),
+      }));
+  }, [filteredProblems, bucketMap]);
+
+  useEffect(() => {
+    if (bucketGroups.length === 0) return;
+    setOpenBuckets((prev) => {
+      if (Object.keys(prev).length > 0) return prev;
+      return bucketGroups.reduce((acc, group) => {
+        acc[group.bucket] = true;
+        return acc;
+      }, {} as Record<string, boolean>);
+    });
+  }, [bucketGroups]);
+
   const tracker = useMemo(() => {
     const total = problems.length;
     const solved = Object.values(statusMap).filter((status) => status === "Solved").length;
@@ -334,10 +364,10 @@ export const DsaList = () => {
   const selectedProblem =
     filteredProblems.find((problem) => problem.id === selectedProblemId) ?? filteredProblems[0];
   const approaches = selectedProblem ? approachMap[selectedProblem.id] ?? [] : [];
-  const workspaceNotes = selectedProblem ? problemNotes[selectedProblem.id] ?? "" : "";
   const selectedBuckets = selectedProblem ? bucketMap[selectedProblem.id] ?? [] : [];
   const selectedImportant = selectedProblem ? importantMap[selectedProblem.id] ?? false : false;
   const currentStatus = selectedProblem ? statusMap[selectedProblem.id] ?? "Unsolved" : "Unsolved";
+  const isOwner = selectedProblem ? selectedProblem.is_owner !== false : true;
   const hasSavedSnippets = selectedProblem
     ? hasSnippetPayload(selectedProblem.solution_notes)
     : false;
@@ -361,7 +391,7 @@ export const DsaList = () => {
       await createDsaProblem(payload);
       setForm(emptyForm);
       setCreateOpen(false);
-      const data = await listDsaProblems();
+      const data = await listMergedDsaProblems();
       setProblems(data.results);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create problem");
@@ -371,7 +401,7 @@ export const DsaList = () => {
   };
 
   const handlePersistSnippets = async (payload: string) => {
-    if (!selectedProblemId) return;
+    if (!selectedProblemId || !isOwner) return;
     const updated = await updateDsaProblem(selectedProblemId, { solution_notes: payload });
     setProblems((prev) =>
       prev.map((problem) => (problem.id === updated.id ? updated : problem))
@@ -379,12 +409,11 @@ export const DsaList = () => {
   };
 
   const handleSaveDetail = async () => {
-    if (!selectedProblem) return;
+    if (!selectedProblem || !isOwner) return;
     setDetailSaving(true);
     setDetailError(null);
     try {
       const updated = await updateDsaProblem(selectedProblem.id, {
-        workspace_notes: workspaceNotes,
         approaches_json: approaches.map((approach) => ({
           id: approach.id,
           title: approach.title,
@@ -405,7 +434,7 @@ export const DsaList = () => {
   };
 
   const handleAddApproach = () => {
-    if (!selectedProblem) return;
+    if (!selectedProblem || !isOwner) return;
     setApproachMap((prev) => {
       const current = prev[selectedProblem.id] ?? [];
       return {
@@ -419,7 +448,7 @@ export const DsaList = () => {
   };
 
   const updateApproach = (approachId: number, patch: Partial<Approach>) => {
-    if (!selectedProblem) return;
+    if (!selectedProblem || !isOwner) return;
     setApproachMap((prev) => {
       const current = prev[selectedProblem.id] ?? [];
       return {
@@ -432,7 +461,7 @@ export const DsaList = () => {
   };
 
   const removeApproach = (approachId: number) => {
-    if (!selectedProblem) return;
+    if (!selectedProblem || !isOwner) return;
     setApproachMap((prev) => {
       const current = prev[selectedProblem.id] ?? [];
       return {
@@ -443,6 +472,11 @@ export const DsaList = () => {
   };
 
   const toggleImportant = async (problemId: number) => {
+    const target = problems.find((item) => item.id === problemId);
+    if (target && target.is_owner === false) {
+      setDetailError("Buddy entries are read-only.");
+      return;
+    }
     const nextValue = !importantMap[problemId];
     setImportantMap((prev) => ({ ...prev, [problemId]: nextValue }));
     try {
@@ -457,8 +491,17 @@ export const DsaList = () => {
   };
 
   const toggleDone = async (problemId: number) => {
+    const target = problems.find((item) => item.id === problemId);
+    if (target && target.is_owner === false) {
+      setDetailError("Buddy entries are read-only.");
+      return;
+    }
     const nextValue = !doneMap[problemId];
     setDoneMap((prev) => ({ ...prev, [problemId]: nextValue }));
+    setStatusMap((prev) => ({
+      ...prev,
+      [problemId]: nextValue ? "Solved" : "Unsolved",
+    }));
     try {
       const updated = await updateDsaProblem(problemId, { is_done: nextValue });
       setProblems((prev) =>
@@ -466,12 +509,16 @@ export const DsaList = () => {
       );
     } catch (err) {
       setDoneMap((prev) => ({ ...prev, [problemId]: !nextValue }));
+      setStatusMap((prev) => ({
+        ...prev,
+        [problemId]: !nextValue ? "Solved" : "Unsolved",
+      }));
       setDetailError(err instanceof Error ? err.message : "Failed to update done state");
     }
   };
 
   const handleAddBucket = () => {
-    if (!selectedProblem) return;
+    if (!selectedProblem || !isOwner) return;
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
     const normalized = normalizeLabel(trimmed);
@@ -484,6 +531,11 @@ export const DsaList = () => {
   };
 
   const removeBucket = (problemId: number, bucket: string) => {
+    const target = problems.find((item) => item.id === problemId);
+    if (target && target.is_owner === false) {
+      setDetailError("Buddy entries are read-only.");
+      return;
+    }
     setBucketMap((prev) => ({
       ...prev,
       [problemId]: (prev[problemId] ?? []).filter((item) => item !== bucket),
@@ -561,7 +613,7 @@ export const DsaList = () => {
               <option value="All">All buckets</option>
               {bucketOptions.map((bucket) => (
                 <option key={bucket} value={bucket}>
-                  {bucket}
+                  {formatBucketLabel(bucket)}
                 </option>
               ))}
             </Select>
@@ -676,88 +728,90 @@ export const DsaList = () => {
         style={{ gridTemplateColumns: `${leftWidth}px 8px 1fr` }}
       >
         <div className="space-y-3 p-2 lg:overflow-y-auto">
-          {loading && <p className="text-xs text-muted-foreground">Loading problems...</p>}
-          <div className="space-y-2">
-            {filteredProblems.map((problem) => {
-              const isActive = problem.id === selectedProblem?.id;
-              const buckets = bucketMap[problem.id] ?? [];
-              const isImportant = importantMap[problem.id];
-              const isDone = doneMap[problem.id];
-              const visibleTags = filterBucketTags(problem.tags ?? [], buckets);
+          {loading && <LoadingSpinner label="Loading problems..." />}
+          <div className="space-y-1.5">
+            {bucketGroups.map((group) => {
+              const isOpen = openBuckets[group.bucket] ?? false;
               return (
                 <div
-                  key={problem.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedProblemId(problem.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedProblemId(problem.id);
-                    }
-                  }}
-                  className={cn(
-                    "relative space-y-2 rounded-md border px-3 py-2 text-left transition",
-                    isActive ? "border-accent bg-muted" : "border-border hover:bg-muted"
-                  )}
+                  key={group.bucket}
+                  className="rounded-md border border-border/80 bg-background"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isDone}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          event.stopPropagation();
-                          toggleDone(problem.id);
-                        }}
-                        className="mt-1"
-                        aria-label="Mark done"
-                      />
-                      <div className="space-y-1">
-                        <div
-                          className={cn(
-                            "text-sm font-medium text-foreground",
-                            isDone && "line-through text-muted-foreground"
-                          )}
-                        >
-                          {problem.title}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenBuckets((prev) => ({
+                        ...prev,
+                        [group.bucket]: !isOpen,
+                      }))
+                    }
+                    className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                  >
+                    <span>{formatBucketLabel(group.bucket)}</span>
+                    {isOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="divide-y divide-border">
+                      {group.items.map((problem) => {
+                        const isActive = problem.id === selectedProblem?.id;
+                        const isDone = doneMap[problem.id];
+                        return (
+                          <div
+                            key={`${group.bucket}-${problem.id}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedProblemId(problem.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setSelectedProblemId(problem.id);
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-1.5 text-[11px] text-foreground transition",
+                              isActive ? "bg-muted" : "hover:bg-muted/70"
+                            )}
+                            style={{ contentVisibility: "auto" }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isDone}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                toggleDone(problem.id);
+                              }}
+                              className="h-3.5 w-3.5 appearance-none rounded-full border border-border bg-background transition checked:border-accent checked:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                              aria-label="Mark done"
+                              disabled={problem.is_owner === false}
+                            />
+                            <span
+                              className={cn(
+                                "text-[11px]",
+                                isDone && "line-through text-muted-foreground"
+                              )}
+                            >
+                              {problem.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {group.items.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          No questions in this bucket.
                         </div>
-                      </div>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleImportant(problem.id);
-                      }}
-                      className="rounded-md text-muted-foreground hover:text-foreground"
-                      aria-label="Toggle important"
-                    >
-                      <Star
-                        className={cn(
-                          "h-4 w-4",
-                          isImportant ? "text-amber-500 fill-amber-500" : "text-muted-foreground"
-                        )}
-                      />
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pb-5">
-                    {buckets.map((bucket) => (
-                      <BucketBadge key={bucket} label={bucket} />
-                    ))}
-                    {visibleTags.map((tag) => (
-                      <TagBadge key={tag} label={tag} />
-                    ))}
-                  </div>
-                  <div className="absolute bottom-2 right-3">
-                    <DifficultyBadge level={difficultyLabel(problem.difficulty)} />
-                  </div>
+                  )}
                 </div>
               );
             })}
-            {!loading && filteredProblems.length === 0 && (
+            {!loading && bucketGroups.length === 0 && (
               <p className="text-xs text-muted-foreground">No problems yet.</p>
             )}
           </div>
@@ -787,18 +841,24 @@ export const DsaList = () => {
                     <span className="text-xs text-muted-foreground">
                       {platformLabel(selectedProblem.platform)} • {difficultyLabel(selectedProblem.difficulty)} • Updated {formatDate(selectedProblem.updated_at)}
                     </span>
+                    {selectedProblem.owner && selectedProblem.is_owner === false && (
+                      <BuddyBadge user={selectedProblem.owner} size="xs" />
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={currentStatus} />
+                    <span className={cn("text-xs font-medium", statusTone(currentStatus))}>
+                      {currentStatus}
+                    </span>
                     <Button
                       variant={selectedImportant ? "primary" : "outline"}
                       size="sm"
                       onClick={() => toggleImportant(selectedProblem.id)}
+                      disabled={!isOwner}
                     >
                       <Star className={cn("h-3.5 w-3.5", selectedImportant && "fill-white")} />
                       {selectedImportant ? "Important" : "Mark important"}
                     </Button>
-                    <Button size="sm" onClick={handleSaveDetail} disabled={detailSaving}>
+                    <Button size="sm" onClick={handleSaveDetail} disabled={detailSaving || !isOwner}>
                       {detailSaving ? "Saving..." : "Save notes"}
                     </Button>
                   </div>
@@ -817,9 +877,25 @@ export const DsaList = () => {
                       href={selectedProblem.link}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-accent hover:text-accent-hover"
+                      className="inline-flex items-center gap-1 text-accent hover:text-accent-hover"
+                      aria-label={`${platformLabel(selectedProblem.platform)} link`}
+                      title={`${platformLabel(selectedProblem.platform)} link`}
                     >
-                      Problem link
+                      {selectedProblem.platform === "LEETCODE" ? (
+                        <img
+                          src="/leetcode.png"
+                          alt="LeetCode"
+                          className="h-5 w-5"
+                        />
+                      ) : selectedProblem.platform === "GFG" ? (
+                        <img
+                          src="/gfg.png"
+                          alt="GeeksforGeeks"
+                          className="h-5 w-5"
+                        />
+                      ) : (
+                        <ExternalLink className="h-4 w-4" />
+                      )}
                     </a>
                   )}
                 </div>
@@ -827,6 +903,11 @@ export const DsaList = () => {
                   {selectedProblem.statement || "Add the full statement when you have it handy."}
                 </div>
                 <p className="text-xs text-muted-foreground">Last attempt: {lastAttemptMap[selectedProblem.id] ?? "—"}</p>
+                {!isOwner && (
+                  <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    Buddy entries are read-only. Open the full detail page to view merged notes.
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -843,7 +924,7 @@ export const DsaList = () => {
                           "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
                         )}
                       >
-                        {bucket}
+                        {formatBucketLabel(bucket)}
                         <button
                           type="button"
                           onClick={() => removeBucket(selectedProblem.id, bucket)}
@@ -863,8 +944,9 @@ export const DsaList = () => {
                       onChange={(event) => setBucketInput(event.target.value)}
                       placeholder="Add bucket"
                       className="h-8 text-xs sm:w-40"
+                      disabled={!isOwner}
                     />
-                    <Button variant="outline" size="sm" onClick={handleAddBucket}>
+                    <Button variant="outline" size="sm" onClick={handleAddBucket} disabled={!isOwner}>
                       Add
                     </Button>
                   </div>
@@ -872,23 +954,9 @@ export const DsaList = () => {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Workspace notes</p>
-                <Textarea
-                  value={workspaceNotes}
-                  onChange={(event) =>
-                    setProblemNotes((prev) => ({
-                      ...prev,
-                      [selectedProblem.id]: event.target.value,
-                    }))
-                  }
-                  placeholder="Capture key observations, pitfalls, or reminders."
-                  className="min-h-[120px]"
-                />
-              </div>
-              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Approaches</p>
-                  <Button variant="outline" size="sm" onClick={handleAddApproach}>
+                  <Button variant="outline" size="sm" onClick={handleAddApproach} disabled={!isOwner}>
                     <Plus className="h-3 w-3" />
                     Add approach
                   </Button>
@@ -906,11 +974,13 @@ export const DsaList = () => {
                         value={approach.title}
                         onChange={(event) => updateApproach(approach.id, { title: event.target.value })}
                         placeholder="Approach title"
+                        disabled={!isOwner}
                       />
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => removeApproach(approach.id)}
+                        disabled={!isOwner}
                       >
                         Remove
                       </Button>
@@ -920,13 +990,14 @@ export const DsaList = () => {
                       onChange={(event) => updateApproach(approach.id, { notes: event.target.value })}
                       placeholder="Explain the approach and complexity tradeoffs."
                       className="min-h-[100px]"
+                      disabled={!isOwner}
                     />
                   </div>
                 ))}
               </div>
               <CodeSnippetsPanel
                 source={selectedProblem.solution_notes}
-                onPersist={handlePersistSnippets}
+                onPersist={isOwner ? handlePersistSnippets : undefined}
               />
               {!hasSavedSnippets && (
                 <div className="space-y-2">
