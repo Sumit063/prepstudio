@@ -3,6 +3,9 @@
 from .models import (
     AuditEvent,
     BuddyRelationship,
+    CustomQuestion,
+    CustomSection,
+    CustomSubsection,
     DesignTopic,
     DSAAttempt,
     DSAProblem,
@@ -74,3 +77,24 @@ class BuddyRelationshipAdmin(admin.ModelAdmin):
     list_display = ("requester", "addressee", "status", "updated_at")
     list_filter = ("status",)
     search_fields = ("requester__username", "addressee__username")
+
+
+@admin.register(CustomSection)
+class CustomSectionAdmin(admin.ModelAdmin):
+    list_display = ("title", "owner", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "is_global")
+    search_fields = ("title", "owner__username", "global_key")
+
+
+@admin.register(CustomSubsection)
+class CustomSubsectionAdmin(admin.ModelAdmin):
+    list_display = ("title", "section", "owner", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "is_global")
+    search_fields = ("title", "section__title", "owner__username", "global_key")
+
+
+@admin.register(CustomQuestion)
+class CustomQuestionAdmin(admin.ModelAdmin):
+    list_display = ("title", "section", "subsection", "owner", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "section", "is_global")
+    search_fields = ("title", "section__title", "owner__username", "global_key")

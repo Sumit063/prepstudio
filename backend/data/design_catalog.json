@@ -1,191 +1,142 @@
 [
   {
-    "title": "Design a rate limiter",
-    "category": "LLD",
-    "bucket_labels": ["traffic", "token-bucket"],
-    "tags": ["cache", "queue", "redis"],
-    "references_json": ["https://redis.io/docs/latest/develop/data-types/streams/"]
-  },
-  {
     "title": "Design a URL shortener",
     "category": "HLD",
-    "bucket_labels": ["storage", "hashing"],
-    "tags": ["scaling", "consistency", "db"],
-    "references_json": ["https://martin.kleppmann.com/"]
+    "bucket_labels": ["storage", "scalability"],
+    "tags": ["hashing", "API", "scaling"],
+    "references_json": []
   },
   {
     "title": "Design a chat system",
     "category": "HLD",
-    "bucket_labels": ["realtime", "pubsub"],
-    "tags": ["queue", "websocket", "scaling"],
-    "references_json": ["https://socket.io/docs/v4/"]
+    "bucket_labels": ["realtime", "messaging"],
+    "tags": ["pubsub", "websocket", "scaling"],
+    "references_json": []
   },
   {
-    "title": "Design a CDN",
-    "category": "SCALING",
-    "bucket_labels": ["edge", "caching"],
-    "tags": ["cache", "cdn", "scaling"],
-    "references_json": ["https://www.cloudflare.com/learning/cdn/what-is-a-cdn/"]
-  },
-  {
-    "title": "Design a news feed (like Instagram/Twitter)",
+    "title": "Design a news feed (like Twitter/Instagram)",
     "category": "HLD",
-    "bucket_labels": ["feeds", "fanout"],
-    "tags": ["timeline", "ranking", "caching"],
-    "references_json": ["https://www.confluent.io/learn/event-streaming/"]
+    "bucket_labels": ["feeds", "ranking"],
+    "tags": ["data modeling", "caching"],
+    "references_json": []
+  },
+  {
+    "title": "Design a ride-sharing service (Uber)",
+    "category": "HLD",
+    "bucket_labels": ["geo", "matching"],
+    "tags": ["location", "dispatch", "scaling"],
+    "references_json": []
   },
   {
     "title": "Design a notification system",
     "category": "HLD",
-    "bucket_labels": ["messaging", "fanout"],
-    "tags": ["queue", "retry", "idempotency"],
-    "references_json": ["https://aws.amazon.com/sqs/"]
+    "bucket_labels": ["messaging", "delivery"],
+    "tags": ["queue", "retry", "scaling"],
+    "references_json": []
   },
   {
-    "title": "Design a web crawler",
+    "title": "Design an e-commerce system (Amazon)",
     "category": "HLD",
-    "bucket_labels": ["distributed-systems", "dedup"],
-    "tags": ["queue", "robots-txt", "politeness"],
-    "references_json": ["https://www.rfc-editor.org/rfc/rfc9309"]
-  },
-  {
-    "title": "Design an API gateway",
-    "category": "SCALING",
-    "bucket_labels": ["traffic", "routing"],
-    "tags": ["auth", "rate-limiting", "observability"],
-    "references_json": ["https://kubernetes.io/docs/concepts/services-networking/ingress/"]
-  },
-  {
-    "title": "Design a load balancer",
-    "category": "SCALING",
-    "bucket_labels": ["traffic", "routing"],
-    "tags": ["health-checks", "l4", "l7"],
-    "references_json": ["https://www.nginx.com/resources/glossary/load-balancing/"]
-  },
-  {
-    "title": "Design a distributed cache",
-    "category": "SCALING",
-    "bucket_labels": ["caching", "consistency"],
-    "tags": ["eviction", "ttl", "replication"],
-    "references_json": ["https://redis.io/docs/latest/develop/data-types/"]
-  },
-  {
-    "title": "Design a key-value store",
-    "category": "HLD",
-    "bucket_labels": ["storage", "replication"],
-    "tags": ["consistent-hashing", "quorum", "lsm-tree"],
-    "references_json": ["https://pdos.csail.mit.edu/6.824/papers/dynamo.pdf"]
-  },
-  {
-    "title": "Design a distributed file storage (Dropbox/Drive)",
-    "category": "HLD",
-    "bucket_labels": ["storage", "sync"],
-    "tags": ["chunking", "dedup", "metadata"],
-    "references_json": ["https://static.googleusercontent.com/media/research.google.com/en//archive/gfs-sosp2003.pdf"]
-  },
-  {
-    "title": "Design object storage (like S3)",
-    "category": "HLD",
-    "bucket_labels": ["storage", "durability"],
-    "tags": ["erasure-coding", "replication", "metadata"],
-    "references_json": ["https://www.usenix.org/conference/fast16/technical-sessions/presentation/weil"]
+    "bucket_labels": ["catalog", "checkout"],
+    "tags": ["search", "db design", "scaling"],
+    "references_json": []
   },
   {
     "title": "Design a video streaming platform (YouTube/Netflix)",
     "category": "HLD",
-    "bucket_labels": ["streaming", "caching"],
-    "tags": ["cdn", "adaptive-bitrate", "storage"],
-    "references_json": ["https://www.rfc-editor.org/rfc/rfc8216"]
+    "bucket_labels": ["streaming", "cdn"],
+    "tags": ["adaptive bitrate", "caching"],
+    "references_json": []
   },
   {
     "title": "Design a search autocomplete",
     "category": "HLD",
     "bucket_labels": ["search", "indexing"],
-    "tags": ["trie", "ranking", "caching"],
-    "references_json": ["https://lucene.apache.org/core/"]
+    "tags": ["trie", "ranking"],
+    "references_json": []
   },
   {
-    "title": "Design a search engine",
+    "title": "Design a social media platform",
     "category": "HLD",
-    "bucket_labels": ["search", "indexing"],
-    "tags": ["inverted-index", "crawler", "ranking"],
-    "references_json": ["https://nlp.stanford.edu/IR-book/"]
+    "bucket_labels": ["users", "posts"],
+    "tags": ["feed", "timeline", "recommendation"],
+    "references_json": []
   },
   {
-    "title": "Design a logging & metrics pipeline",
+    "title": "Design a CDN (Content Delivery Network)",
     "category": "SCALING",
-    "bucket_labels": ["observability", "streaming"],
-    "tags": ["kafka", "aggregation", "retention"],
-    "references_json": ["https://kafka.apache.org/documentation/"]
+    "bucket_labels": ["edge", "caching"],
+    "tags": ["latency", "replication"],
+    "references_json": []
   },
   {
-    "title": "Design a distributed job scheduler",
-    "category": "HLD",
-    "bucket_labels": ["scheduling", "fault-tolerance"],
-    "tags": ["leases", "heartbeats", "retries"],
-    "references_json": ["https://research.google/pubs/pub41684/"]
+    "title": "Design a load balancer",
+    "category": "SCALING",
+    "bucket_labels": ["traffic", "routing"],
+    "tags": ["l4", "l7", "failover"],
+    "references_json": []
+  },
+  {
+    "title": "Design a distributed cache",
+    "category": "SCALING",
+    "bucket_labels": ["cache", "consistency"],
+    "tags": ["eviction", "replication"],
+    "references_json": []
+  },
+  {
+    "title": "Design an API gateway",
+    "category": "SCALING",
+    "bucket_labels": ["routing", "security"],
+    "tags": ["auth", "rate limiting"],
+    "references_json": []
   },
   {
     "title": "Design a message queue",
     "category": "HLD",
-    "bucket_labels": ["messaging", "pubsub"],
-    "tags": ["ordering", "at-least-once", "consumer-groups"],
-    "references_json": ["https://kafka.apache.org/documentation/#intro_concepts_and_terms"]
-  },
-  {
-    "title": "Design a real-time collaboration editor (Google Docs)",
-    "category": "HLD",
-    "bucket_labels": ["realtime", "conflict-resolution"],
-    "tags": ["crdt", "ot", "websocket"],
-    "references_json": ["https://crdt.tech/"]
-  },
-  {
-    "title": "Design a payment system",
-    "category": "HLD",
-    "bucket_labels": ["transactions", "consistency"],
-    "tags": ["idempotency", "sagas", "reconciliation"],
-    "references_json": ["https://stripe.com/docs/idempotency"]
+    "bucket_labels": ["messaging", "backpressure"],
+    "tags": ["ordering", "delivery guarantees"],
+    "references_json": []
   },
   {
     "title": "Design a distributed lock service",
     "category": "LLD",
-    "bucket_labels": ["consensus", "coordination"],
-    "tags": ["leases", "timeouts", "fencing-tokens"],
-    "references_json": ["https://etcd.io/docs/v3.5/learning/"]
-  },
-  {
-    "title": "Design a consistent unique ID generator",
-    "category": "LLD",
-    "bucket_labels": ["ids", "time"],
-    "tags": ["snowflake", "clock-skew", "ordering"],
-    "references_json": ["https://blog.twitter.com/engineering/en_us/a/2010/announcing-snowflake"]
-  },
-  {
-    "title": "Design a feature flag system",
-    "category": "HLD",
-    "bucket_labels": ["config", "rollouts"],
-    "tags": ["targeting", "audit", "consistency"],
-    "references_json": ["https://launchdarkly.com/blog/what-are-feature-flags/"]
+    "bucket_labels": ["coordination", "consensus"],
+    "tags": ["timeouts", "leader election"],
+    "references_json": []
   },
   {
     "title": "Design an authentication service",
     "category": "HLD",
     "bucket_labels": ["security", "identity"],
-    "tags": ["oauth2", "jwt", "sessions"],
-    "references_json": ["https://datatracker.ietf.org/doc/html/rfc6749"]
+    "tags": ["JWT", "oauth"],
+    "references_json": []
   },
   {
-    "title": "Design a passwordless login (OTP/Magic Link)",
+    "title": "Design a rate limiter",
     "category": "LLD",
-    "bucket_labels": ["security", "identity"],
-    "tags": ["otp", "rate-limiting", "replay-protection"],
-    "references_json": ["https://www.rfc-editor.org/rfc/rfc6238"]
+    "bucket_labels": ["traffic", "limits"],
+    "tags": ["token bucket", "leaky bucket"],
+    "references_json": []
   },
   {
-    "title": "Design a URL crawling + content dedup pipeline",
-    "category": "SCALING",
-    "bucket_labels": ["dedup", "streaming"],
-    "tags": ["bloom-filter", "hashing", "queue"],
-    "references_json": ["https://en.wikipedia.org/wiki/Bloom_filter"]
+    "title": "Design a payment system",
+    "category": "HLD",
+    "bucket_labels": ["transactions", "consistency"],
+    "tags": ["idempotency", "rollback"],
+    "references_json": []
+  },
+  {
+    "title": "Design a distributed file system",
+    "category": "HLD",
+    "bucket_labels": ["storage", "replication"],
+    "tags": ["chunking", "metadata"],
+    "references_json": []
+  },
+  {
+    "title": "Design a real-time collaboration editor",
+    "category": "HLD",
+    "bucket_labels": ["realtime", "sync"],
+    "tags": ["CRDT", "OT"],
+    "references_json": []
   }
 ]
