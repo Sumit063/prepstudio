@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link, NavLink } from "react-router-dom";
 import { navItems } from "../../app/routes";
 import { cn } from "../../lib/cn";
+import { BuddyList } from "../buddies/BuddyList";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -61,12 +62,7 @@ export const Sidebar = ({ collapsed, onToggle }: SidebarProps) => {
           );
         })}
       </nav>
-      {!collapsed && (
-        <div className="border-t border-border px-4 py-4 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Today</p>
-          <p>2 reviews due • 1 design note updated</p>
-        </div>
-      )}
+      <BuddyList collapsed={collapsed} />
       <button
         onClick={onToggle}
         className="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"

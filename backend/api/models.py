@@ -183,3 +183,26 @@ class GoogleCalendarAccount(models.Model):
 
     def __str__(self) -> str:
         return f"{self.owner} Google Calendar"
+
+
+class BuddyRelationship(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        BLOCKED = "BLOCKED", "Blocked"
+
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="buddy_requests_sent"
+    )
+    addressee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="buddy_requests_received"
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("requester", "addressee")
+
+    def __str__(self) -> str:
+        return f"{self.requester} -> {self.addressee} ({self.status})"

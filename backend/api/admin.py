@@ -2,6 +2,7 @@
 
 from .models import (
     AuditEvent,
+    BuddyRelationship,
     DesignTopic,
     DSAAttempt,
     DSAProblem,
@@ -66,3 +67,10 @@ class GoogleCalendarAccountAdmin(admin.ModelAdmin):
     list_display = ("owner", "email", "calendar_id", "updated_at")
     list_filter = ("calendar_id",)
     search_fields = ("owner__username", "email")
+
+
+@admin.register(BuddyRelationship)
+class BuddyRelationshipAdmin(admin.ModelAdmin):
+    list_display = ("requester", "addressee", "status", "updated_at")
+    list_filter = ("status",)
+    search_fields = ("requester__username", "addressee__username")

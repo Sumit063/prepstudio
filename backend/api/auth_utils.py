@@ -2,6 +2,8 @@ import os
 from typing import Optional
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 
 
 def _get_service_token_from_request(request) -> str | None:
@@ -35,5 +37,10 @@ def get_service_user(request) -> Optional[object]:
 def get_request_user(request) -> Optional[object]:
     user = getattr(request, "user", None)
     if user and getattr(user, "is_authenticated", False):
+        now = timezone.now()
+        last_active = user.last_login
+        if not last_active or now - last_active > timedelta(minutes=5):
+            user.last_login = now
+            user.save(update_fields=["last_login"])
         return user
     return get_service_user(request)
