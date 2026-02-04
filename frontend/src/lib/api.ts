@@ -1,4 +1,10 @@
-﻿import { getAccessToken, getRefreshToken } from "./auth";
+﻿import {
+  clearAuthTokens,
+  getAccessToken,
+  getRefreshToken,
+  isTokenExpired,
+  setAuthTokens,
+} from "./auth";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -9,6 +15,11 @@ type ApiOptions = {
   method?: HttpMethod;
   data?: unknown;
   signal?: AbortSignal;
+};
+
+type RefreshPayload = {
+  access: string;
+  refresh?: string;
 };
 
 export type AuthTokens = {
@@ -131,7 +142,31 @@ export type CalendarStatus = {
   calendar_id?: string;
 };
 
-const apiFetch = async <T>(path: string, options: ApiOptions = {}): Promise<T> => {
+const requestRefreshToken = async (refreshToken: string): Promise<RefreshPayload | null> => {
+  if (isTokenExpired(refreshToken, 0)) return null;
+  const response = await fetch(`${API_BASE_URL}/api/auth/token/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh: refreshToken }),
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as RefreshPayload;
+};
+
+export const refreshAuthTokens = async () => {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+  const payload = await requestRefreshToken(refreshToken);
+  if (!payload?.access) return null;
+  setAuthTokens(payload.access, payload.refresh ?? refreshToken);
+  return payload;
+};
+
+const apiFetch = async <T>(
+  path: string,
+  options: ApiOptions = {},
+  allowRetry = true
+): Promise<T> => {
   const { method = "GET", data, signal } = options;
   const token = getAccessToken();
   const headers: Record<string, string> = {
@@ -147,6 +182,18 @@ const apiFetch = async <T>(path: string, options: ApiOptions = {}): Promise<T> =
     body: data ? JSON.stringify(data) : undefined,
     signal,
   });
+
+  if (response.status === 401 && allowRetry) {
+    const refreshed = await refreshAuthTokens();
+    if (refreshed?.access) {
+      return apiFetch<T>(path, options, false);
+    }
+    clearAuthTokens();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired.");
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -250,11 +297,16 @@ export const loginUser = (data: { username: string; password: string }) =>
     data,
   });
 
-export const refreshToken = (refresh?: string) =>
-  apiFetch<AuthTokens>("/api/auth/token/refresh", {
-    method: "POST",
-    data: { refresh: refresh ?? getRefreshToken() },
-  });
+export const refreshToken = async (refresh?: string) => {
+  const token = refresh ?? getRefreshToken();
+  if (!token) throw new Error("Refresh token missing.");
+  const payload = await requestRefreshToken(token);
+  if (!payload?.access) {
+    throw new Error("Session expired.");
+  }
+  setAuthTokens(payload.access, payload.refresh ?? token);
+  return { access: payload.access, refresh: payload.refresh ?? token };
+};
 
 export const logoutUser = (refresh?: string) =>
   apiFetch<{ detail: string }>("/api/auth/logout", {
