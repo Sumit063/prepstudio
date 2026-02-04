@@ -34,6 +34,25 @@ type ImportantMap = Record<number, boolean>;
 
 type DoneMap = Record<number, boolean>;
 
+const normalizeLabel = (value: string) => value.trim().toLowerCase();
+
+const normalizeLabels = (labels: string[]) => {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  labels.forEach((label) => {
+    const normalized = normalizeLabel(label);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    next.push(normalized);
+  });
+  return next;
+};
+
+const filterBucketTags = (tags: string[], buckets: string[]) => {
+  const bucketSet = new Set(buckets.map(normalizeLabel));
+  return tags.filter((tag) => !bucketSet.has(normalizeLabel(tag)));
+};
+
 const statusLabel = (status?: DSAAttempt["status"]) => {
   if (status === "SOLVED") return "Solved";
   if (status === "PARTIAL") return "Partial";
@@ -221,7 +240,7 @@ export const DsaList = () => {
     setBucketMap((prev) => {
       const next = { ...prev };
       problems.forEach((problem) => {
-        next[problem.id] = problem.bucket_labels ?? [];
+        next[problem.id] = normalizeLabels(problem.bucket_labels ?? []);
       });
       return next;
     });
@@ -455,10 +474,11 @@ export const DsaList = () => {
     if (!selectedProblem) return;
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
+    const normalized = normalizeLabel(trimmed);
     setBucketMap((prev) => {
       const current = prev[selectedProblem.id] ?? [];
-      if (current.includes(trimmed)) return prev;
-      return { ...prev, [selectedProblem.id]: [...current, trimmed] };
+      if (current.map(normalizeLabel).includes(normalized)) return prev;
+      return { ...prev, [selectedProblem.id]: [...current, normalized] };
     });
     setBucketInput("");
   };
@@ -663,6 +683,7 @@ export const DsaList = () => {
               const buckets = bucketMap[problem.id] ?? [];
               const isImportant = importantMap[problem.id];
               const isDone = doneMap[problem.id];
+              const visibleTags = filterBucketTags(problem.tags ?? [], buckets);
               return (
                 <div
                   key={problem.id}
@@ -726,7 +747,7 @@ export const DsaList = () => {
                     {buckets.map((bucket) => (
                       <BucketBadge key={bucket} label={bucket} />
                     ))}
-                    {problem.tags.map((tag) => (
+                    {visibleTags.map((tag) => (
                       <TagBadge key={tag} label={tag} />
                     ))}
                   </div>

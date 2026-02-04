@@ -61,6 +61,13 @@ const toNoteBlocks = (raw?: string | null): PartialBlock[] => {
   return [{ type: "paragraph", content: text }];
 };
 
+const normalizeLabel = (value: string) => value.trim().toLowerCase();
+
+const filterBucketTags = (tags: string[], buckets: string[]) => {
+  const bucketSet = new Set(buckets.map(normalizeLabel));
+  return tags.filter((tag) => !bucketSet.has(normalizeLabel(tag)));
+};
+
 const useIsDark = () => {
   const [isDark, setIsDark] = useState(() =>
     typeof document !== "undefined"
@@ -131,10 +138,14 @@ export const DesignDetail = () => {
         const data = await getDesignTopic(Number(id));
         if (!active) return;
         setTopic(data);
+        const visibleTags = filterBucketTags(
+          data.tags ?? [],
+          data.bucket_labels ?? []
+        );
         setEditForm({
           title: data.title,
           category: data.category as CategoryValue,
-          tags: data.tags.join(", "),
+          tags: visibleTags.join(", "),
           notes_markdown: data.notes_markdown,
           tradeoffs: data.tradeoffs,
         });
@@ -223,7 +234,11 @@ export const DesignDetail = () => {
   const handleAddBucket = () => {
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
-    setBucketLabels((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    const normalized = normalizeLabel(trimmed);
+    setBucketLabels((prev) => {
+      if (prev.map(normalizeLabel).includes(normalized)) return prev;
+      return [...prev, normalized];
+    });
     setBucketInput("");
   };
 
@@ -248,17 +263,20 @@ export const DesignDetail = () => {
     setSaving(true);
     setActionError(null);
     try {
-      const payload: Partial<DesignTopic> = {
-        title: editForm.title,
-        category: editForm.category,
-        tags: editForm.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        notes_markdown: notesDraft,
-        tradeoffs: tradeoffsDraft,
-        references_json: references.map((ref) => ({ label: ref.label, url: ref.url })),
-        bucket_labels: bucketLabels,
+        const payload: Partial<DesignTopic> = {
+          title: editForm.title,
+          category: editForm.category,
+          tags: filterBucketTags(
+            editForm.tags
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+            bucketLabels
+          ),
+          notes_markdown: notesDraft,
+          tradeoffs: tradeoffsDraft,
+          references_json: references.map((ref) => ({ label: ref.label, url: ref.url })),
+          bucket_labels: bucketLabels,
         is_important: isImportant,
         is_done: isDone,
         canvas_json: canvasDraft ?? {},
@@ -565,7 +583,7 @@ export const DesignDetail = () => {
           <div className="rounded-md border border-border bg-surface p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Tags</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {topic.tags.map((tag) => (
+              {filterBucketTags(topic.tags ?? [], bucketLabels).map((tag) => (
                 <span
                   key={tag}
                   className={cn(badgeBase, "border-border bg-background text-muted-foreground")}
@@ -573,7 +591,7 @@ export const DesignDetail = () => {
                   {tag}
                 </span>
               ))}
-              {topic.tags.length === 0 && (
+              {filterBucketTags(topic.tags ?? [], bucketLabels).length === 0 && (
                 <span className="text-xs text-muted-foreground">No tags added.</span>
               )}
             </div>

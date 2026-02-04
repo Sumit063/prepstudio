@@ -35,6 +35,13 @@ type CategoryValue = (typeof categories)[number]["value"];
 const badgeBase =
   "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium";
 
+const normalizeLabel = (value: string) => value.trim().toLowerCase();
+
+const filterBucketTags = (tags: string[], buckets: string[]) => {
+  const bucketSet = new Set(buckets.map(normalizeLabel));
+  return tags.filter((tag) => !bucketSet.has(normalizeLabel(tag)));
+};
+
 const emptyForm = {
   title: "",
   category: "HLD" as CategoryValue,
@@ -84,7 +91,7 @@ export const Design = () => {
   const bucketOptions = useMemo(() => {
     const all = new Set<string>();
     topics.forEach((topic) => {
-      (topic.bucket_labels ?? []).forEach((bucket) => all.add(bucket));
+      (topic.bucket_labels ?? []).forEach((bucket) => all.add(normalizeLabel(bucket)));
     });
     return Array.from(all).sort();
   }, [topics]);
@@ -103,7 +110,11 @@ export const Design = () => {
         list = list.filter((topic) => topic.is_important);
       }
       if (bucketFilter !== "All") {
-        list = list.filter((topic) => (topic.bucket_labels ?? []).includes(bucketFilter));
+        list = list.filter((topic) =>
+          (topic.bucket_labels ?? []).some(
+            (bucket) => normalizeLabel(bucket) === normalizeLabel(bucketFilter)
+          )
+        );
       }
       acc[category.value] = list;
       return acc;
@@ -320,6 +331,8 @@ export const Design = () => {
               <div className="space-y-2 lg:flex-1 lg:overflow-y-auto lg:pr-2">
                 {loading && <p className="text-xs text-muted-foreground">Loading topics...</p>}
                 {(filteredTopicsByCategory[category.value] ?? []).map((topic) => {
+                  const buckets = topic.bucket_labels ?? [];
+                  const visibleTags = filterBucketTags(topic.tags ?? [], buckets);
                   return (
                     <div
                       key={topic.id}
@@ -381,7 +394,7 @@ export const Design = () => {
                             Updated {formatDate(topic.updated_at)}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {(topic.bucket_labels ?? []).map((bucket) => (
+                            {buckets.map((bucket) => (
                               <span
                                 key={bucket}
                                 className={cn(
@@ -392,7 +405,7 @@ export const Design = () => {
                                 {bucket}
                               </span>
                             ))}
-                            {topic.tags.map((tag) => (
+                            {visibleTags.map((tag) => (
                               <span
                                 key={tag}
                                 className={cn(badgeBase, "border-border bg-surface text-muted-foreground")}

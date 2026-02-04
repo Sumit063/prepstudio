@@ -7,10 +7,12 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from api.global_design import ensure_global_topics_for_user
+from api.global_dsa import ensure_global_problems_for_user
 from api.models import (
-    DesignTopic,
-    DSAAttempt,
-    DSAProblem,
+        DesignTopic,
+        DSAAttempt,
+        DSAProblem,
     ReviewItem,
     StudySession,
     Tag,
@@ -42,11 +44,10 @@ class Command(BaseCommand):
         if options.get("reset"):
             self.stdout.write("Clearing existing demo data...")
             DSAAttempt.objects.filter(owner=demo_user).delete()
-            DSAProblem.objects.filter(owner=demo_user).delete()
-            DesignTopic.objects.filter(owner=demo_user).delete()
+            DSAProblem.objects.filter(owner=demo_user, is_global=False).delete()
+            DesignTopic.objects.filter(owner=demo_user, is_global=False).delete()
             StudySession.objects.filter(owner=demo_user).delete()
             ReviewItem.objects.filter(owner=demo_user).delete()
-            Tag.objects.filter(owner=demo_user).delete()
 
         tags = [
             "arrays",
@@ -168,13 +169,20 @@ class Command(BaseCommand):
         problems = []
         for problem_data in problems_data:
             tags_for_problem = problem_data.pop("tags")
-            problem, created_problem = DSAProblem.objects.get_or_create(
-                owner=demo_user, title=problem_data["title"], defaults=problem_data
+            problem = (
+                DSAProblem.objects.filter(owner=demo_user, link=problem_data.get("link", "")).first()
+                or DSAProblem.objects.filter(owner=demo_user, title=problem_data["title"]).first()
             )
+            created_problem = False
+            if problem is None:
+                problem = DSAProblem.objects.create(owner=demo_user, **problem_data)
+                created_problem = True
             if not created_problem:
                 for key, value in problem_data.items():
+                    if problem.is_global and key in {"title", "platform", "link", "difficulty", "bucket_labels"}:
+                        continue
                     setattr(problem, key, value)
-                problem.save()
+                problem.save(update_fields=list(problem_data.keys()))
             problem.tags.set([tag_objs[tag] for tag in tags_for_problem])
             problem.workspace_notes = problem_data.get("workspace_notes", problem.workspace_notes)
             problem.approaches_json = problem_data.get("approaches_json", problem.approaches_json)
@@ -269,13 +277,19 @@ class Command(BaseCommand):
 
         for topic_data in topics_data:
             tags_for_topic = topic_data.pop("tags")
-            topic, created_topic = DesignTopic.objects.get_or_create(
-                owner=demo_user, title=topic_data["title"], defaults=topic_data
+            topic = (
+                DesignTopic.objects.filter(owner=demo_user, title=topic_data["title"]).first()
             )
+            created_topic = False
+            if topic is None:
+                topic = DesignTopic.objects.create(owner=demo_user, **topic_data)
+                created_topic = True
             if not created_topic:
                 for key, value in topic_data.items():
+                    if topic.is_global and key in {"title", "category", "references_json", "bucket_labels"}:
+                        continue
                     setattr(topic, key, value)
-                topic.save()
+                topic.save(update_fields=list(topic_data.keys()))
             topic.tags.set([tag_objs[tag] for tag in tags_for_topic if tag in tag_objs])
             topic.bucket_labels = topic_data.get("bucket_labels", topic.bucket_labels)
             topic.is_important = topic_data.get("is_important", topic.is_important)
@@ -329,4 +343,6 @@ class Command(BaseCommand):
                 )[0]
             )
 
+        ensure_global_problems_for_user(demo_user)
+        ensure_global_topics_for_user(demo_user)
         self.stdout.write(self.style.SUCCESS("Seed data loaded."))

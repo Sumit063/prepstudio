@@ -3,6 +3,9 @@ import os
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
+from api.global_design import ensure_global_topics_for_user
+from api.global_dsa import ensure_global_problems_for_user
+
 
 class Command(BaseCommand):
     help = "Create or update a demo user for local JWT login."
@@ -23,6 +26,8 @@ class Command(BaseCommand):
         user.is_active = True
         user.set_password(password)
         user.save(update_fields=["email", "is_active", "password"])
+        ensure_global_problems_for_user(user)
+        ensure_global_topics_for_user(user)
 
         status = "Created" if created else "Updated"
         self.stdout.write(self.style.SUCCESS(f"{status} demo user: {username}"))
