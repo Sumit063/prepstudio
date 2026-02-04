@@ -26,7 +26,7 @@ const AppShell = ({
     <div
       className={cn(
         "transition-[padding] duration-200",
-        sidebarCollapsed ? "pl-12" : "pl-52"
+        sidebarCollapsed ? "pl-[75px]" : "pl-52"
       )}
     >
       <Header />
