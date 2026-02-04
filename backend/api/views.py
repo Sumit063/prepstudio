@@ -1,9 +1,12 @@
 ﻿from __future__ import annotations
 
 import os
+import requests
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core import signing
+from django.http import HttpResponseRedirect
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -17,7 +20,23 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from .auth_utils import get_request_user
-from .models import DesignTopic, DSAAttempt, DSAProblem, ReviewItem, StudySession, Tag
+from .google_calendar import (
+    build_auth_url,
+    build_review_event,
+    build_session_event,
+    exchange_code_for_tokens,
+    refresh_access_token,
+    revoke_token,
+)
+from .models import (
+    DesignTopic,
+    DSAAttempt,
+    DSAProblem,
+    GoogleCalendarAccount,
+    ReviewItem,
+    StudySession,
+    Tag,
+)
 from .serializers import (
     AuditEventSerializer,
     DesignTopicSerializer,
@@ -134,7 +153,48 @@ class StudySessionViewSet(viewsets.ModelViewSet):
         owner = get_request_user(self.request)
         if owner is None:
             raise PermissionDenied("No active user scope.")
-        serializer.save(owner=owner)
+        session = serializer.save(owner=owner)
+        sync_flag = self.request.data.get("sync_to_calendar", True)
+        tz_name = self.request.data.get("time_zone")
+        if str(sync_flag).lower() in {"false", "0", "no"}:
+            return
+
+        account = GoogleCalendarAccount.objects.filter(owner=owner).first()
+        if not account:
+            session.calendar_error = "Google Calendar not connected."
+            session.save(update_fields=["calendar_error"])
+            return
+
+        try:
+            token = refresh_access_token(account)
+            event_payload = build_session_event(
+                session,
+                start_time=self.request.data.get("start_time"),
+                tz_name=tz_name,
+            )
+            response = requests.post(
+                f"https://www.googleapis.com/calendar/v3/calendars/{account.calendar_id}/events",
+                headers={"Authorization": f"Bearer {token}"},
+                json=event_payload,
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+            session.calendar_event_id = data.get("id", "")
+            session.calendar_event_link = data.get("htmlLink", "")
+            session.calendar_synced_at = timezone.now()
+            session.calendar_error = ""
+            session.save(
+                update_fields=[
+                    "calendar_event_id",
+                    "calendar_event_link",
+                    "calendar_synced_at",
+                    "calendar_error",
+                ]
+            )
+        except Exception as exc:
+            session.calendar_error = str(exc)
+            session.save(update_fields=["calendar_error"])
 
 
 class ReviewItemViewSet(viewsets.ModelViewSet):
@@ -151,7 +211,45 @@ class ReviewItemViewSet(viewsets.ModelViewSet):
         return ReviewItem.objects.filter(owner=owner).order_by("-next_review_at")
 
     def perform_create(self, serializer):
-        serializer.save(owner=self._get_owner())
+        owner = self._get_owner()
+        review = serializer.save(owner=owner)
+        sync_flag = self.request.data.get("sync_to_calendar", True)
+        tz_name = self.request.data.get("time_zone")
+        if str(sync_flag).lower() in {"false", "0", "no"}:
+            return
+
+        account = GoogleCalendarAccount.objects.filter(owner=owner).first()
+        if not account:
+            review.calendar_error = "Google Calendar not connected."
+            review.save(update_fields=["calendar_error"])
+            return
+
+        try:
+            token = refresh_access_token(account)
+            event_payload = build_review_event(review, tz_name=tz_name)
+            response = requests.post(
+                f"https://www.googleapis.com/calendar/v3/calendars/{account.calendar_id}/events",
+                headers={"Authorization": f"Bearer {token}"},
+                json=event_payload,
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+            review.calendar_event_id = data.get("id", "")
+            review.calendar_event_link = data.get("htmlLink", "")
+            review.calendar_synced_at = timezone.now()
+            review.calendar_error = ""
+            review.save(
+                update_fields=[
+                    "calendar_event_id",
+                    "calendar_event_link",
+                    "calendar_synced_at",
+                    "calendar_error",
+                ]
+            )
+        except Exception as exc:
+            review.calendar_error = str(exc)
+            review.save(update_fields=["calendar_error"])
 
 
 class DueReviewsView(APIView):
@@ -364,3 +462,109 @@ class GoogleAuthView(APIView):
                 "email": user.email,
             }
         )
+
+
+class CalendarStatusView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        account = GoogleCalendarAccount.objects.filter(owner=owner).first()
+        if not account:
+            return Response({"connected": False})
+        return Response(
+            {
+                "connected": True,
+                "email": account.email or owner.email,
+                "calendar_id": account.calendar_id,
+            }
+        )
+
+
+class CalendarConnectView(APIView):
+    def get(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        try:
+            auth_url = build_auth_url(owner)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"auth_url": auth_url})
+
+
+class CalendarDisconnectView(APIView):
+    def post(self, request):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        account = GoogleCalendarAccount.objects.filter(owner=owner).first()
+        if not account:
+            return Response({"detail": "Calendar not connected."})
+        token = account.refresh_token or account.access_token
+        revoke_token(token)
+        account.delete()
+        return Response({"detail": "Disconnected."})
+
+
+class CalendarCallbackView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
+        redirect_url = f"{frontend_base}/sessions"
+
+        error = request.query_params.get("error")
+        if error:
+            return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+
+        code = request.query_params.get("code")
+        state = request.query_params.get("state")
+        if not code or not state:
+            return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+
+        try:
+            payload = signing.loads(state, salt="google-calendar-state", max_age=600)
+        except signing.BadSignature:
+            return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+
+        user_id = payload.get("user_id")
+        user = get_user_model().objects.filter(id=user_id).first()
+        if not user:
+            return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+
+        try:
+            token_data = exchange_code_for_tokens(code)
+        except Exception:
+            return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+
+        refresh_token = token_data.get("refresh_token")
+        access_token = token_data.get("access_token", "")
+        scope = token_data.get("scope", "")
+        expires_in = int(token_data.get("expires_in", 0))
+        expiry = timezone.now() + timedelta(seconds=expires_in)
+
+        account = GoogleCalendarAccount.objects.filter(owner=user).first()
+        if account is None:
+            if not refresh_token:
+                return HttpResponseRedirect(f"{redirect_url}?calendar=error")
+            account = GoogleCalendarAccount.objects.create(
+                owner=user,
+                refresh_token=refresh_token,
+                access_token=access_token,
+                token_expiry=expiry,
+                scope=scope,
+                email=user.email or "",
+            )
+        else:
+            if refresh_token:
+                account.refresh_token = refresh_token
+            account.access_token = access_token or account.access_token
+            account.token_expiry = expiry
+            account.scope = scope or account.scope
+            account.email = account.email or user.email or ""
+            account.save(
+                update_fields=["refresh_token", "access_token", "token_expiry", "scope", "email", "updated_at"]
+            )
+
+        return HttpResponseRedirect(f"{redirect_url}?calendar=connected")

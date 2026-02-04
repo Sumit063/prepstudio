@@ -73,10 +73,21 @@ export type DesignTopic = {
 export type StudySession = {
   id: number;
   date: string;
+  start_time?: string | null;
   duration_minutes: number;
   focus_area: "DSA" | "DESIGN" | "MIXED";
   notes: string;
+  calendar_event_id: string;
+  calendar_event_link: string;
+  calendar_error: string;
+  calendar_synced_at: string | null;
   created_at: string;
+};
+
+export type StudySessionInput = Partial<StudySession> & {
+  sync_to_calendar?: boolean;
+  start_time?: string;
+  time_zone?: string;
 };
 
 export type ReviewItem = {
@@ -85,6 +96,15 @@ export type ReviewItem = {
   ref_id: number;
   next_review_at: string;
   interval_days: number;
+  calendar_event_id?: string;
+  calendar_event_link?: string;
+  calendar_error?: string;
+  calendar_synced_at?: string | null;
+};
+
+export type ReviewItemInput = Partial<ReviewItem> & {
+  sync_to_calendar?: boolean;
+  time_zone?: string;
 };
 
 export type AnalyticsSummary = {
@@ -99,6 +119,12 @@ export type AnalyticsSummary = {
     detail: string;
     occurred_at: string;
   }>;
+};
+
+export type CalendarStatus = {
+  connected: boolean;
+  email?: string;
+  calendar_id?: string;
 };
 
 const apiFetch = async <T>(path: string, options: ApiOptions = {}): Promise<T> => {
@@ -192,7 +218,7 @@ export const deleteDesignTopic = (id: number) =>
 export const listStudySessions = () =>
   apiFetch<Paginated<StudySession>>("/api/study/sessions/");
 
-export const createStudySession = (data: Partial<StudySession>) =>
+export const createStudySession = (data: StudySessionInput) =>
   apiFetch<StudySession>("/api/study/sessions/", { method: "POST", data });
 
 export const getDueReviews = (days = 0) =>
@@ -201,7 +227,7 @@ export const getDueReviews = (days = 0) =>
 export const getAnalyticsSummary = (days = 30) =>
   apiFetch<AnalyticsSummary>(`/api/analytics/summary${buildQuery({ days })}`);
 
-export const createReviewItem = (data: Partial<ReviewItem>) =>
+export const createReviewItem = (data: ReviewItemInput) =>
   apiFetch<ReviewItem>("/api/reviews/", { method: "POST", data });
 
 export const registerUser = (data: { username: string; password: string; email?: string }) =>
@@ -233,3 +259,12 @@ export const loginWithGoogle = (credential: string) =>
     method: "POST",
     data: { credential },
   });
+
+export const getCalendarStatus = () =>
+  apiFetch<CalendarStatus>("/api/calendar/status");
+
+export const getCalendarConnectUrl = () =>
+  apiFetch<{ auth_url: string }>("/api/calendar/connect");
+
+export const disconnectCalendar = () =>
+  apiFetch<{ detail: string }>("/api/calendar/disconnect", { method: "POST" });

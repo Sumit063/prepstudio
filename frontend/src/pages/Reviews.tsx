@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
+import { DateTimePicker } from "../components/ui/DateTimePicker";
 import {
   Dialog,
   DialogClose,
@@ -14,8 +15,14 @@ import {
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/Table";
-import { createReviewItem, getDesignTopic, getDsaProblem, getDueReviews } from "../lib/api";
-import type { ReviewItem } from "../lib/api";
+import {
+  createReviewItem,
+  getCalendarStatus,
+  getDesignTopic,
+  getDsaProblem,
+  getDueReviews,
+} from "../lib/api";
+import type { CalendarStatus, ReviewItem } from "../lib/api";
 import { formatDate } from "../lib/format";
 
 type ReviewDisplay = ReviewItem & {
@@ -30,10 +37,13 @@ export const Reviews = () => {
   const [reviews, setReviews] = useState<ReviewDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus | null>(null);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [syncToCalendar, setSyncToCalendar] = useState(true);
   const [scheduleForm, setScheduleForm] = useState({
     item_type: "DSA_PROBLEM",
     ref_id: "",
-    next_review_at: "",
+    next_review_at: new Date(),
     interval_days: 1,
   });
   const [scheduling, setScheduling] = useState(false);
@@ -95,21 +105,44 @@ export const Reviews = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadStatus = async () => {
+      setCalendarError(null);
+      try {
+        const status = await getCalendarStatus();
+        if (!active) return;
+        setCalendarStatus(status);
+        if (!status.connected) {
+          setSyncToCalendar(false);
+        }
+      } catch (err) {
+        if (active) {
+          setCalendarError(err instanceof Error ? err.message : "Failed to load calendar status");
+        }
+      }
+    };
+    loadStatus();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleSchedule = async () => {
     setScheduling(true);
     setScheduleError(null);
     try {
-      const nextReview =
-        scheduleForm.next_review_at && scheduleForm.next_review_at.length > 0
-          ? new Date(scheduleForm.next_review_at).toISOString()
-          : new Date().toISOString();
+      const nextReview = scheduleForm.next_review_at ?? new Date();
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       await createReviewItem({
         item_type: scheduleForm.item_type as ReviewItem["item_type"],
         ref_id: Number(scheduleForm.ref_id),
-        next_review_at: nextReview,
+        next_review_at: nextReview.toISOString(),
         interval_days: Number(scheduleForm.interval_days) || 1,
+        sync_to_calendar: syncToCalendar && Boolean(calendarStatus?.connected),
+        time_zone: timeZone,
       });
-      setScheduleForm({ item_type: "DSA_PROBLEM", ref_id: "", next_review_at: "", interval_days: 1 });
+      setScheduleForm({ item_type: "DSA_PROBLEM", ref_id: "", next_review_at: new Date(), interval_days: 1 });
       setScheduleOpen(false);
       await loadReviews();
     } catch (err) {
@@ -160,13 +193,13 @@ export const Reviews = () => {
                 />
               </div>
               <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground">Next review at</label>
-                <Input
-                  type="datetime-local"
+                <label className="text-xs text-muted-foreground">Review date & time</label>
+                <DateTimePicker
                   value={scheduleForm.next_review_at}
-                  onChange={(event) =>
-                    setScheduleForm((prev) => ({ ...prev, next_review_at: event.target.value }))
+                  onChange={(value) =>
+                    setScheduleForm((prev) => ({ ...prev, next_review_at: value ?? new Date() }))
                   }
+                  placeholder="Select date and time"
                 />
               </div>
               <div className="grid gap-1">
@@ -182,6 +215,21 @@ export const Reviews = () => {
                   }
                 />
               </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={syncToCalendar}
+                  onChange={(event) => setSyncToCalendar(event.target.checked)}
+                  disabled={!calendarStatus?.connected}
+                />
+                Add to calendar
+                {!calendarStatus?.connected && <span>(connect in Sessions)</span>}
+              </div>
+              {calendarError && (
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {calendarError}
+                </div>
+              )}
               {scheduleError && (
                 <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
                   {scheduleError}
@@ -219,12 +267,13 @@ export const Reviews = () => {
                   <TableHead>Item</TableHead>
                   <TableHead>Due</TableHead>
                   <TableHead>Next review</TableHead>
+                  <TableHead>Calendar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       Loading reviews...
                     </TableCell>
                   </TableRow>
@@ -237,11 +286,27 @@ export const Reviews = () => {
                     <TableCell className="text-muted-foreground">
                       {formatDate(item.next_review_at)}
                     </TableCell>
+                    <TableCell>
+                      {item.calendar_event_link ? (
+                        <a
+                          href={item.calendar_event_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-accent hover:text-accent-hover"
+                        >
+                          Open
+                        </a>
+                      ) : item.calendar_error ? (
+                        <span className="text-xs text-rose-500">Failed</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">?</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {!loading && reviews.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       No reviews due.
                     </TableCell>
                   </TableRow>

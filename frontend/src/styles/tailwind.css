@@ -71,3 +71,79 @@
   }
 }
 
+@layer components {
+  .prep-datepicker-popper {
+    z-index: 50;
+  }
+
+  .prep-datepicker {
+    @apply rounded-md border border-border bg-surface text-sm text-foreground;
+  }
+
+  .prep-datepicker .react-datepicker__header {
+    @apply border-b border-border bg-muted;
+  }
+
+  .prep-datepicker .react-datepicker__current-month,
+  .prep-datepicker .react-datepicker-time__header,
+  .prep-datepicker .react-datepicker__day-name {
+    @apply text-xs text-muted-foreground;
+  }
+
+  .prep-datepicker .react-datepicker__day,
+  .prep-datepicker .react-datepicker__time-list-item {
+    @apply text-foreground;
+  }
+
+  .prep-datepicker .react-datepicker__day,
+  .prep-datepicker .react-datepicker__time-list-item {
+    @apply rounded-sm text-sm;
+  }
+
+  .prep-datepicker .react-datepicker__day:hover,
+  .prep-datepicker .react-datepicker__time-list-item:hover {
+    @apply bg-muted;
+  }
+
+  .prep-datepicker .react-datepicker__day--selected,
+  .prep-datepicker .react-datepicker__day--keyboard-selected,
+  .prep-datepicker .react-datepicker__time-list-item--selected {
+    @apply bg-accent text-white;
+  }
+
+  .prep-datepicker .react-datepicker__day--outside-month {
+    @apply text-muted-foreground;
+  }
+
+  .prep-datepicker .react-datepicker__time-container {
+    @apply border-l border-border;
+  }
+
+  .prep-datepicker .react-datepicker__time-list {
+    @apply bg-surface;
+  }
+
+  .dark .prep-datepicker {
+    @apply bg-surface text-foreground;
+  }
+
+  .dark .prep-datepicker .react-datepicker__header {
+    @apply bg-muted;
+  }
+
+  .dark .prep-datepicker .react-datepicker__day,
+  .dark .prep-datepicker .react-datepicker__time-list-item {
+    @apply text-foreground;
+  }
+
+  .dark .prep-datepicker .react-datepicker__day--disabled,
+  .dark .prep-datepicker .react-datepicker__time-list-item--disabled {
+    @apply text-muted-foreground;
+  }
+
+  .dark .prep-datepicker .react-datepicker__triangle::before,
+  .dark .prep-datepicker .react-datepicker__triangle::after {
+    border-bottom-color: var(--color-muted);
+  }
+}
+
