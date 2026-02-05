@@ -1,0 +1,22 @@
+name: Deploy
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy-backend:
+    if: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render backend deploy
+        run: |
+          curl -sS -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}"
+
+  deploy-frontend:
+    if: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render frontend deploy
+        run: |
+          curl -sS -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}"
