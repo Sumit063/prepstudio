@@ -424,7 +424,7 @@ class CustomQuestionViewSet(viewsets.ModelViewSet):
         queryset = CustomQuestion.objects.filter(owner=owner)
         section_id = self.request.query_params.get("section")
         if section_id:
-            queryset = queryset.filter(section_id=section_id)
+            queryset = queryset.filter(subsection__section_id=section_id)
         subsection_id = self.request.query_params.get("subsection")
         if subsection_id:
             queryset = queryset.filter(subsection_id=subsection_id)

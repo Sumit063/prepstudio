@@ -52,7 +52,6 @@ class DSAProblemSerializer(serializers.ModelSerializer):
             "tags",
             "statement",
             "solution_notes",
-            "workspace_notes",
             "approaches_json",
             "bucket_labels",
             "is_global",
@@ -365,7 +364,6 @@ class CustomQuestionSerializer(serializers.ModelSerializer):
         model = CustomQuestion
         fields = [
             "id",
-            "section",
             "subsection",
             "title",
             "solution_json",
@@ -381,22 +379,17 @@ class CustomQuestionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request") if hasattr(self, "context") else None
         owner = get_request_user(request) if request else None
-        section = attrs.get("section") or getattr(self.instance, "section", None)
         subsection = attrs.get("subsection") or getattr(self.instance, "subsection", None)
         if owner:
-            if section and section.owner_id != owner.id:
-                raise serializers.ValidationError("Section does not belong to the current user.")
             if subsection and subsection.owner_id != owner.id:
                 raise serializers.ValidationError("Subsection does not belong to the current user.")
-        if section and subsection and subsection.section_id != section.id:
-            raise serializers.ValidationError("Subsection does not belong to the selected section.")
         return attrs
 
     def update(self, instance, validated_data):
         request = self.context.get("request") if hasattr(self, "context") else None
         is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
         if instance.is_global and not is_staff:
-            for field in ("title", "section", "subsection"):
+            for field in ("title", "subsection"):
                 validated_data.pop(field, None)
         return super().update(instance, validated_data)
 

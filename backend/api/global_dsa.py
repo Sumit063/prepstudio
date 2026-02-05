@@ -12,7 +12,6 @@ GLOBAL_FIELDS = ("title", "platform", "link", "difficulty", "bucket_labels")
 USER_FIELDS = (
     "statement",
     "solution_notes",
-    "workspace_notes",
     "approaches_json",
     "is_important",
     "is_done",

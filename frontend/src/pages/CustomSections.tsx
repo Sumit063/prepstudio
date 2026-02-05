@@ -206,7 +206,21 @@ export const CustomSections = () => {
         if (!active) return;
         setSubsections(subs);
         setQuestions(items);
-        setSelectedQuestionId((prev) => prev ?? items[0]?.id ?? null);
+        setSelectedQuestionId((prev) => {
+          if (items.length === 0) return null;
+          if (!prev) {
+            const sortedBuckets = [...subs].sort((a, b) => a.title.localeCompare(b.title));
+            const firstBucketId = sortedBuckets[0]?.id;
+            const firstInBucket =
+              firstBucketId != null
+                ? items
+                    .filter((item) => item.subsection === firstBucketId)
+                    .sort((a, b) => a.title.localeCompare(b.title))[0]
+                : items[0];
+            return firstInBucket?.id ?? items[0]?.id ?? null;
+          }
+          return items.some((item) => item.id === prev) ? prev : items[0]?.id ?? null;
+        });
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Failed to load content.");
@@ -431,7 +445,6 @@ export const CustomSections = () => {
     setDetailError(null);
     try {
       const created = await createCustomQuestion({
-        section: selectedSectionId,
         subsection: Number(newQuestionForm.subsection),
         title: newQuestionForm.title.trim(),
         solution_json: emptyBlocks,
@@ -802,7 +815,7 @@ export const CustomSections = () => {
                     {isOpen && (
                       <div className="divide-y divide-border">
                         {group.items.map((question) => {
-                          const isActive = question.id === selectedQuestion?.id;
+                          const isActive = question.id === selectedQuestionId;
                           return (
                             <div
                               key={question.id}
@@ -817,7 +830,9 @@ export const CustomSections = () => {
                               }}
                               className={cn(
                                 "flex items-center gap-2 px-3 py-1.5 text-[11px] text-foreground transition",
-                                isActive ? "bg-muted" : "hover:bg-muted/70"
+                                isActive
+                                  ? "bg-muted text-foreground ring-1 ring-inset ring-accent"
+                                  : "hover:bg-muted/70"
                               )}
                             >
                               <input
@@ -901,41 +916,46 @@ export const CustomSections = () => {
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Input
-                      value={editQuestionForm.title}
-                      onChange={(event) =>
-                        setEditQuestionForm((prev) => ({ ...prev, title: event.target.value }))
-                      }
-                      className="h-8 flex-1 min-w-0 text-base font-semibold bg-transparent border-transparent px-0 focus:ring-0"
-                    />
+                    <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+                      {selectedQuestion.title}
+                    </h2>
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       Updated {formatDate(selectedQuestion.updated_at)}
                     </span>
                   </div>
-                  <Select
-                    value={editQuestionForm.subsection}
-                    onChange={(event) =>
-                      setEditQuestionForm((prev) => ({
-                        ...prev,
-                        subsection: event.target.value,
-                      }))
-                    }
-                    className="h-8 text-xs w-36"
-                  >
-                    {subsections.map((bucket) => (
-                      <option key={bucket.id} value={bucket.id}>
-                        {formatBucketLabel(bucket.title)}
-                      </option>
-                    ))}
-                  </Select>
-                  <button
-                    type="button"
-                    onClick={handleDeleteQuestion}
-                    className="inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-rose-500"
-                    aria-label="Delete question"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={editQuestionForm.subsection}
+                      onChange={(event) =>
+                        setEditQuestionForm((prev) => ({
+                          ...prev,
+                          subsection: event.target.value,
+                        }))
+                      }
+                      disabled={selectedQuestion.is_global}
+                      className={cn(
+                        "h-8 text-xs w-36",
+                        selectedQuestion.is_global && "opacity-60"
+                      )}
+                    >
+                      {subsections.map((bucket) => (
+                        <option key={bucket.id} value={bucket.id}>
+                          {formatBucketLabel(bucket.title)}
+                        </option>
+                      ))}
+                    </Select>
+                    <button
+                      type="button"
+                      onClick={handleDeleteQuestion}
+                      className={cn(
+                        "inline-flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-rose-500",
+                        selectedQuestion.is_global && "pointer-events-none opacity-50"
+                      )}
+                      aria-label="Delete question"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 

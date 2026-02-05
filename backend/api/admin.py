@@ -95,6 +95,6 @@ class CustomSubsectionAdmin(admin.ModelAdmin):
 
 @admin.register(CustomQuestion)
 class CustomQuestionAdmin(admin.ModelAdmin):
-    list_display = ("title", "section", "subsection", "owner", "is_global", "global_key", "updated_at")
-    list_filter = ("owner", "section", "is_global")
-    search_fields = ("title", "section__title", "owner__username", "global_key")
+    list_display = ("title", "subsection", "owner", "is_global", "global_key", "updated_at")
+    list_filter = ("owner", "is_global")
+    search_fields = ("title", "subsection__title", "owner__username", "global_key")
