@@ -34,7 +34,6 @@ class DSAProblem(models.Model):
     tags = models.ManyToManyField(Tag, related_name="dsa_problems", blank=True)
     statement = models.TextField(blank=True)
     solution_notes = models.TextField(blank=True)
-    workspace_notes = models.TextField(blank=True)
     approaches_json = models.JSONField(default=list, blank=True)
     bucket_labels = models.JSONField(default=list, blank=True)
     is_global = models.BooleanField(default=False)
@@ -246,9 +245,6 @@ class CustomSubsection(models.Model):
 class CustomQuestion(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="custom_questions"
-    )
-    section = models.ForeignKey(
-        CustomSection, on_delete=models.CASCADE, related_name="questions"
     )
     subsection = models.ForeignKey(
         CustomSubsection, on_delete=models.CASCADE, related_name="questions"

@@ -517,29 +517,53 @@ export const DsaList = () => {
     }
   };
 
-  const handleAddBucket = () => {
+  const handleAddBucket = async () => {
     if (!selectedProblem || !isOwner) return;
     const trimmed = bucketInput.trim();
     if (!trimmed) return;
     const normalized = normalizeLabel(trimmed);
-    setBucketMap((prev) => {
-      const current = prev[selectedProblem.id] ?? [];
-      if (current.map(normalizeLabel).includes(normalized)) return prev;
-      return { ...prev, [selectedProblem.id]: [...current, normalized] };
-    });
+    const current = bucketMap[selectedProblem.id] ?? [];
+    if (current.map(normalizeLabel).includes(normalized)) {
+      setBucketInput("");
+      return;
+    }
+    const nextBuckets = [...current, normalized];
+    setBucketMap((prev) => ({ ...prev, [selectedProblem.id]: nextBuckets }));
     setBucketInput("");
+    try {
+      const updated = await updateDsaProblem(selectedProblem.id, {
+        bucket_labels: nextBuckets,
+      });
+      setProblems((prev) =>
+        prev.map((problem) => (problem.id === updated.id ? updated : problem))
+      );
+    } catch (err) {
+      setBucketMap((prev) => ({ ...prev, [selectedProblem.id]: current }));
+      setDetailError(err instanceof Error ? err.message : "Failed to update buckets");
+    }
   };
 
-  const removeBucket = (problemId: number, bucket: string) => {
+  const removeBucket = async (problemId: number, bucket: string) => {
     const target = problems.find((item) => item.id === problemId);
     if (target && target.is_owner === false) {
       setDetailError("Buddy entries are read-only.");
       return;
     }
+    const current = bucketMap[problemId] ?? [];
+    const nextBuckets = current.filter((item) => item !== bucket);
     setBucketMap((prev) => ({
       ...prev,
-      [problemId]: (prev[problemId] ?? []).filter((item) => item !== bucket),
+      [problemId]: nextBuckets,
     }));
+    try {
+      const updated = await updateDsaProblem(problemId, { bucket_labels: nextBuckets });
+      setProblems((prev) =>
+        prev.map((problem) => (problem.id === updated.id ? updated : problem))
+      );
+    } catch (err) {
+      setBucketMap((prev) => ({ ...prev, [problemId]: current }));
+      setDetailError(err instanceof Error ? err.message : "Failed to update buckets");
+    }
   };
 
   return (

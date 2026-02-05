@@ -78,18 +78,6 @@ def _build_problem_entries(problem: DSAProblem) -> list[SharedContentEntry]:
     entries: list[SharedContentEntry] = []
     updated = problem.updated_at.isoformat()
 
-    if problem.workspace_notes:
-        entries.append(
-            SharedContentEntry(
-                id=f"workspace-{problem.owner_id}-{problem.id}",
-                type="workspace_note",
-                content=problem.workspace_notes,
-                language=None,
-                created_at=updated,
-                owner=owner,
-            )
-        )
-
     snippets = _parse_snippet_payload(problem.solution_notes)
     if snippets:
         for snippet in snippets:

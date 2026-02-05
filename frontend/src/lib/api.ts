@@ -54,7 +54,6 @@ export type DSAProblem = {
   tags: string[];
   statement: string;
   solution_notes: string;
-  workspace_notes: string;
   approaches_json: Array<{ id?: number | string; title?: string; notes?: string }>;
   bucket_labels: string[];
   is_global: boolean;
@@ -153,7 +152,6 @@ export type CustomSubsection = {
 
 export type CustomQuestion = {
   id: number;
-  section: number;
   subsection: number;
   title: string;
   solution_json: unknown;

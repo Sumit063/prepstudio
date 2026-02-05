@@ -86,7 +86,6 @@ def _sync_subsection(
 
 def _sync_question(
     user,
-    section: CustomSection,
     subsection: CustomSubsection,
     question_key: str,
     title: str,
@@ -96,7 +95,6 @@ def _sync_question(
         owner=user,
         global_key=question_key,
         defaults={
-            "section": section,
             "subsection": subsection,
             "title": title,
             "references_json": references or [],
@@ -107,8 +105,6 @@ def _sync_question(
         updates = {}
         if question.title != title:
             updates["title"] = title
-        if question.section_id != section.id:
-            updates["section"] = section
         if question.subsection_id != subsection.id:
             updates["subsection"] = subsection
         if references is not None and question.references_json != references:
@@ -166,7 +162,6 @@ def create_global_sections_for_all_users(payload: dict) -> tuple[int, int]:
                 references = question_payload.get("references", []) or []
                 question = _sync_question(
                     user,
-                    section,
                     subsection,
                     question_key,
                     question_title,
@@ -218,7 +213,6 @@ def ensure_global_custom_for_user(user) -> int:
                 created += 1
 
             template_questions = CustomQuestion.objects.filter(
-                section=template,
                 subsection=sub,
                 is_global=True,
                 global_key__isnull=False,
@@ -228,7 +222,6 @@ def ensure_global_custom_for_user(user) -> int:
                     continue
                 CustomQuestion.objects.create(
                     owner=user,
-                    section=section,
                     subsection=subsection,
                     title=question.title,
                     references_json=question.references_json,
