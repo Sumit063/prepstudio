@@ -14,6 +14,9 @@ from .views import (
     CalendarConnectView,
     CalendarDisconnectView,
     CalendarStatusView,
+    CustomQuestionViewSet,
+    CustomSectionViewSet,
+    CustomSubsectionViewSet,
     DesignTopicViewSet,
     DSAProblemViewSet,
     DueReviewsView,
@@ -21,6 +24,7 @@ from .views import (
     LogoutView,
     MergedDesignListView,
     MergedDsaListView,
+    MergedCustomQuestionDetailView,
     MergedProblemDetailView,
     MergedTopicDetailView,
     RegisterView,
@@ -31,6 +35,9 @@ from .views import (
 router = DefaultRouter()
 router.register(r"dsa/problems", DSAProblemViewSet, basename="dsa-problem")
 router.register(r"design/topics", DesignTopicViewSet, basename="design-topic")
+router.register(r"custom/sections", CustomSectionViewSet, basename="custom-section")
+router.register(r"custom/subsections", CustomSubsectionViewSet, basename="custom-subsection")
+router.register(r"custom/questions", CustomQuestionViewSet, basename="custom-question")
 router.register(r"study/sessions", StudySessionViewSet, basename="study-session")
 router.register(r"reviews", ReviewItemViewSet, basename="review-item")
 
@@ -51,6 +58,7 @@ urlpatterns = [
     path("merged/design/topics", MergedDesignListView.as_view(), name="merged_design_list"),
     path("merged/problems/<int:problem_id>", MergedProblemDetailView.as_view(), name="merged_problem_detail"),
     path("merged/topics/<int:topic_id>", MergedTopicDetailView.as_view(), name="merged_topic_detail"),
+    path("merged/custom/questions/<int:question_id>", MergedCustomQuestionDetailView.as_view(), name="merged_custom_question_detail"),
     path("calendar/status", CalendarStatusView.as_view(), name="calendar_status"),
     path("calendar/connect", CalendarConnectView.as_view(), name="calendar_connect"),
     path("calendar/disconnect", CalendarDisconnectView.as_view(), name="calendar_disconnect"),

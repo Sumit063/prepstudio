@@ -9,6 +9,9 @@ from rest_framework import serializers
 from .auth_utils import get_request_user
 from .models import (
     AuditEvent,
+    CustomQuestion,
+    CustomSection,
+    CustomSubsection,
     DesignTopic,
     DSAAttempt,
     DSAProblem,
@@ -317,6 +320,85 @@ class AuditEventSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class CustomSectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomSection
+        fields = ["id", "title", "description", "is_global", "global_key", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "is_global", "global_key"]
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
+        if instance.is_global and not is_staff:
+            validated_data.pop("title", None)
+            validated_data.pop("description", None)
+        return super().update(instance, validated_data)
+
+
+class CustomSubsectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomSubsection
+        fields = ["id", "section", "title", "is_global", "global_key", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "is_global", "global_key"]
+
+    def validate(self, attrs):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        owner = get_request_user(request) if request else None
+        section = attrs.get("section") or getattr(self.instance, "section", None)
+        if owner and section and section.owner_id != owner.id:
+            raise serializers.ValidationError("Section does not belong to the current user.")
+        return attrs
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
+        if instance.is_global and not is_staff:
+            validated_data.pop("title", None)
+            validated_data.pop("section", None)
+        return super().update(instance, validated_data)
+
+
+class CustomQuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomQuestion
+        fields = [
+            "id",
+            "section",
+            "subsection",
+            "title",
+            "solution_json",
+            "references_json",
+            "is_done",
+            "is_global",
+            "global_key",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "is_global", "global_key"]
+
+    def validate(self, attrs):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        owner = get_request_user(request) if request else None
+        section = attrs.get("section") or getattr(self.instance, "section", None)
+        subsection = attrs.get("subsection") or getattr(self.instance, "subsection", None)
+        if owner:
+            if section and section.owner_id != owner.id:
+                raise serializers.ValidationError("Section does not belong to the current user.")
+            if subsection and subsection.owner_id != owner.id:
+                raise serializers.ValidationError("Subsection does not belong to the current user.")
+        if section and subsection and subsection.section_id != section.id:
+            raise serializers.ValidationError("Subsection does not belong to the selected section.")
+        return attrs
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request") if hasattr(self, "context") else None
+        is_staff = bool(getattr(getattr(request, "user", None), "is_staff", False))
+        if instance.is_global and not is_staff:
+            for field in ("title", "section", "subsection"):
+                validated_data.pop(field, None)
+        return super().update(instance, validated_data)
 
 
 class UserRegistrationSerializer(serializers.Serializer):

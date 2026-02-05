@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 from rest_framework.exceptions import PermissionDenied
 
-from api.models import DesignTopic, DSAProblem
+from api.models import CustomQuestion, DesignTopic, DSAProblem
 from api.repositories.buddy_repository import list_accepted_buddies
 
 
@@ -193,6 +193,33 @@ def _build_topic_entries(topic: DesignTopic) -> list[SharedContentEntry]:
     return entries
 
 
+def _build_custom_question_entries(question: CustomQuestion) -> list[SharedContentEntry]:
+    owner = _serialize_owner(question.owner)
+    updated = question.updated_at.isoformat()
+    entries: list[SharedContentEntry] = [
+        SharedContentEntry(
+            id=f"custom-solution-{question.owner_id}-{question.id}",
+            type="solution",
+            content=question.solution_json,
+            language=None,
+            created_at=updated,
+            owner=owner,
+        )
+    ]
+    if question.references_json:
+        entries.append(
+            SharedContentEntry(
+                id=f"custom-references-{question.owner_id}-{question.id}",
+                type="references",
+                content=question.references_json,
+                language=None,
+                created_at=updated,
+                owner=owner,
+            )
+        )
+    return entries
+
+
 def get_merged_user_ids(user) -> list[int]:
     buddies = list_accepted_buddies(user)
     return [user.id] + [buddy.id for buddy in buddies]
@@ -292,3 +319,32 @@ def get_merged_topic_detail(user, topic_id: int) -> tuple[DesignTopic, list[Shar
 
     entries.sort(key=lambda entry: entry.created_at, reverse=True)
     return topic, entries
+
+
+def get_merged_custom_question_detail(
+    user, question_id: int
+) -> tuple[CustomQuestion, list[SharedContentEntry]]:
+    user_ids = get_merged_user_ids(user)
+    question = (
+        CustomQuestion.objects.select_related("owner")
+        .filter(id=question_id, owner_id__in=user_ids)
+        .first()
+    )
+    if not question:
+        raise PermissionDenied("Question not accessible.")
+
+    if question.global_key:
+        related = (
+            CustomQuestion.objects.select_related("owner")
+            .filter(owner_id__in=user_ids, global_key=question.global_key)
+            .order_by("-updated_at")
+        )
+    else:
+        related = [question]
+
+    entries: list[SharedContentEntry] = []
+    for item in related:
+        entries.extend(_build_custom_question_entries(item))
+
+    entries.sort(key=lambda entry: entry.created_at, reverse=True)
+    return question, entries

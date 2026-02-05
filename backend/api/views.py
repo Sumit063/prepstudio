@@ -32,6 +32,7 @@ from .global_design import (
     ensure_global_topics_for_user,
     update_global_topics,
 )
+from .global_custom import ensure_global_custom_for_user
 from .google_calendar import (
     build_auth_url,
     build_review_event,
@@ -41,6 +42,9 @@ from .google_calendar import (
     revoke_token,
 )
 from .models import (
+    CustomQuestion,
+    CustomSection,
+    CustomSubsection,
     DesignTopic,
     DSAAttempt,
     DSAProblem,
@@ -51,6 +55,9 @@ from .models import (
 )
 from .serializers import (
     AuditEventSerializer,
+    CustomQuestionSerializer,
+    CustomSectionSerializer,
+    CustomSubsectionSerializer,
     DesignTopicSerializer,
     DSAAttemptSerializer,
     DSAProblemSerializer,
@@ -69,6 +76,7 @@ from .services.buddy_service import (
 from .services.merge_service import (
     get_merged_design_list,
     get_merged_dsa_list,
+    get_merged_custom_question_detail,
     get_merged_problem_detail,
     get_merged_topic_detail,
 )
@@ -337,6 +345,101 @@ class DesignTopicViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             DesignTopic.objects.filter(is_global=True, global_key=instance.global_key).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
+
+
+class CustomSectionViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomSectionSerializer
+    pagination_class = None
+
+    def _get_owner(self):
+        owner = get_request_user(self.request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        return owner
+
+    def get_queryset(self):
+        owner = self._get_owner()
+        return CustomSection.objects.filter(owner=owner).order_by("title")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._get_owner())
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        owner = self._get_owner()
+        if instance.is_global and not owner.is_staff:
+            raise PermissionDenied("Global sections can only be deleted by an admin.")
+        if instance.is_global and owner.is_staff and instance.global_key:
+            CustomSection.objects.filter(is_global=True, global_key=instance.global_key).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
+
+
+class CustomSubsectionViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomSubsectionSerializer
+    pagination_class = None
+
+    def _get_owner(self):
+        owner = get_request_user(self.request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        return owner
+
+    def get_queryset(self):
+        owner = self._get_owner()
+        queryset = CustomSubsection.objects.filter(owner=owner)
+        section_id = self.request.query_params.get("section")
+        if section_id:
+            queryset = queryset.filter(section_id=section_id)
+        return queryset.order_by("title")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._get_owner())
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        owner = self._get_owner()
+        if instance.is_global and not owner.is_staff:
+            raise PermissionDenied("Global subsections can only be deleted by an admin.")
+        if instance.is_global and owner.is_staff and instance.global_key:
+            CustomSubsection.objects.filter(is_global=True, global_key=instance.global_key).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return super().destroy(request, *args, **kwargs)
+
+
+class CustomQuestionViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomQuestionSerializer
+    pagination_class = None
+
+    def _get_owner(self):
+        owner = get_request_user(self.request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        return owner
+
+    def get_queryset(self):
+        owner = self._get_owner()
+        queryset = CustomQuestion.objects.filter(owner=owner)
+        section_id = self.request.query_params.get("section")
+        if section_id:
+            queryset = queryset.filter(section_id=section_id)
+        subsection_id = self.request.query_params.get("subsection")
+        if subsection_id:
+            queryset = queryset.filter(subsection_id=subsection_id)
+        return queryset.order_by("title")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self._get_owner())
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        owner = self._get_owner()
+        if instance.is_global and not owner.is_staff:
+            raise PermissionDenied("Global questions can only be deleted by an admin.")
+        if instance.is_global and owner.is_staff and instance.global_key:
+            CustomQuestion.objects.filter(is_global=True, global_key=instance.global_key).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         return super().destroy(request, *args, **kwargs)
 
@@ -756,6 +859,30 @@ class MergedTopicDetailView(APIView):
         return Response(payload)
 
 
+class MergedCustomQuestionDetailView(APIView):
+    def get(self, request, question_id: int):
+        owner = get_request_user(request)
+        if owner is None:
+            raise PermissionDenied("No active user scope.")
+        question, entries = get_merged_custom_question_detail(owner, question_id)
+        payload = {
+            "question": CustomQuestionSerializer(question).data,
+            "entries": [
+                {
+                    "id": entry.id,
+                    "type": entry.type,
+                    "content": entry.content,
+                    "language": entry.language,
+                    "createdAt": entry.created_at,
+                    "owner": entry.owner,
+                }
+                for entry in entries
+            ],
+            "current_user_id": owner.id,
+        }
+        return Response(payload)
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -765,6 +892,7 @@ class RegisterView(APIView):
         user = serializer.save()
         ensure_global_problems_for_user(user)
         ensure_global_topics_for_user(user)
+        ensure_global_custom_for_user(user)
         payload = {
             "id": user.id,
             "username": user.username,
@@ -831,6 +959,7 @@ class GoogleAuthView(APIView):
             user.save()
             ensure_global_problems_for_user(user)
             ensure_global_topics_for_user(user)
+            ensure_global_custom_for_user(user)
         elif full_name and not user.first_name:
             parts = full_name.split()
             user.first_name = parts[0]

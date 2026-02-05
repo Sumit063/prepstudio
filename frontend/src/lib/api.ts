@@ -135,6 +135,34 @@ export type ReviewItemInput = Partial<ReviewItem> & {
   time_zone?: string;
 };
 
+export type CustomSection = {
+  id: number;
+  title: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomSubsection = {
+  id: number;
+  section: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomQuestion = {
+  id: number;
+  section: number;
+  subsection: number;
+  title: string;
+  solution_json: unknown;
+  references_json?: Array<string | { label?: string; url?: string }>;
+  is_done?: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AnalyticsSummary = {
   attempts_solved_count: number;
   attempts_total_count: number;
@@ -181,6 +209,12 @@ export type MergedProblemDetail = {
 
 export type MergedTopicDetail = {
   topic: DesignTopic;
+  entries: MergedEntry[];
+  current_user_id: number;
+};
+
+export type MergedCustomQuestionDetail = {
+  question: CustomQuestion;
   entries: MergedEntry[];
   current_user_id: number;
 };
@@ -396,6 +430,42 @@ export const removeBuddy = (relationshipId: number) =>
     data: { relationship_id: relationshipId },
   });
 
+export const listCustomSections = () =>
+  apiFetch<CustomSection[]>("/api/custom/sections/");
+
+export const createCustomSection = (data: Partial<CustomSection>) =>
+  apiFetch<CustomSection>("/api/custom/sections/", { method: "POST", data });
+
+export const updateCustomSection = (id: number, data: Partial<CustomSection>) =>
+  apiFetch<CustomSection>(`/api/custom/sections/${id}/`, { method: "PATCH", data });
+
+export const deleteCustomSection = (id: number) =>
+  apiFetch<void>(`/api/custom/sections/${id}/`, { method: "DELETE" });
+
+export const listCustomSubsections = (sectionId: number) =>
+  apiFetch<CustomSubsection[]>(`/api/custom/subsections${buildQuery({ section: sectionId })}`);
+
+export const createCustomSubsection = (data: Partial<CustomSubsection>) =>
+  apiFetch<CustomSubsection>("/api/custom/subsections/", { method: "POST", data });
+
+export const updateCustomSubsection = (id: number, data: Partial<CustomSubsection>) =>
+  apiFetch<CustomSubsection>(`/api/custom/subsections/${id}/`, { method: "PATCH", data });
+
+export const deleteCustomSubsection = (id: number) =>
+  apiFetch<void>(`/api/custom/subsections/${id}/`, { method: "DELETE" });
+
+export const listCustomQuestions = (sectionId: number) =>
+  apiFetch<CustomQuestion[]>(`/api/custom/questions${buildQuery({ section: sectionId })}`);
+
+export const createCustomQuestion = (data: Partial<CustomQuestion>) =>
+  apiFetch<CustomQuestion>("/api/custom/questions/", { method: "POST", data });
+
+export const updateCustomQuestion = (id: number, data: Partial<CustomQuestion>) =>
+  apiFetch<CustomQuestion>(`/api/custom/questions/${id}/`, { method: "PATCH", data });
+
+export const deleteCustomQuestion = (id: number) =>
+  apiFetch<void>(`/api/custom/questions/${id}/`, { method: "DELETE" });
+
 export const listMergedDsaProblems = (params: {
   search?: string;
   difficulty_min?: number;
@@ -420,3 +490,6 @@ export const getMergedProblemDetail = (id: number) =>
 
 export const getMergedTopicDetail = (id: number) =>
   apiFetch<MergedTopicDetail>(`/api/merged/topics/${id}`);
+
+export const getMergedCustomQuestionDetail = (id: number) =>
+  apiFetch<MergedCustomQuestionDetail>(`/api/merged/custom/questions/${id}`);

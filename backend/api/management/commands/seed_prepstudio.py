@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from api.global_custom import ensure_global_custom_for_user
 from api.global_design import ensure_global_topics_for_user
 from api.global_dsa import ensure_global_problems_for_user
 from api.models import (
@@ -345,4 +346,5 @@ class Command(BaseCommand):
 
         ensure_global_problems_for_user(demo_user)
         ensure_global_topics_for_user(demo_user)
+        ensure_global_custom_for_user(demo_user)
         self.stdout.write(self.style.SUCCESS("Seed data loaded."))

@@ -1,0 +1,374 @@
+[
+  {
+    "title": "System Design",
+    "description": "Classic system design questions to rehearse.",
+    "subsections": [
+      {
+        "title": "System Design Fundamentals",
+        "questions": [
+          { "title": "What is system design and why is it important?" },
+          { "title": "What is the difference between high-level design and low-level design?" },
+          { "title": "What are functional vs non-functional requirements?" },
+          { "title": "How do you estimate scale (users, QPS, storage) for a system?" },
+          { "title": "How do you identify system bottlenecks early?" }
+        ]
+      },
+      {
+        "title": "Scalability",
+        "questions": [
+          { "title": "What does scalability mean in distributed systems?" },
+          { "title": "Vertical vs horizontal scaling – when to use which?" },
+          { "title": "How do stateless services help scalability?" },
+          { "title": "What are common scaling bottlenecks?" },
+          { "title": "How do you scale a read-heavy system?" }
+        ]
+      },
+      {
+        "title": "Load Balancing",
+        "questions": [
+          { "title": "What is a load balancer and why is it needed?" },
+          { "title": "Layer 4 vs Layer 7 load balancing" },
+          { "title": "Round-robin vs least connections vs hashing" },
+          { "title": "How do load balancers handle failures?" },
+          { "title": "Client-side vs server-side load balancing" }
+        ]
+      },
+      {
+        "title": "Caching",
+        "questions": [
+          { "title": "What is caching and where can it be applied?" },
+          { "title": "Cache-aside vs write-through vs write-back" },
+          { "title": "Cache eviction strategies (LRU, LFU, FIFO)" },
+          { "title": "What is cache invalidation and why is it hard?" },
+          { "title": "How do you prevent cache stampede?" }
+        ]
+      },
+      {
+        "title": "Databases",
+        "questions": [
+          { "title": "SQL vs NoSQL – tradeoffs" },
+          { "title": "When would you choose a relational database?" },
+          { "title": "What are ACID properties?" },
+          { "title": "What is eventual consistency?" },
+          { "title": "How do indexes improve performance?" }
+        ]
+      },
+      {
+        "title": "Database Sharding",
+        "questions": [
+          { "title": "What is database sharding?" },
+          { "title": "Range-based vs hash-based sharding" },
+          { "title": "What is hotspotting in sharded databases?" },
+          { "title": "How do you reshard data?" },
+          { "title": "How does sharding affect joins?" }
+        ]
+      },
+      {
+        "title": "Replication",
+        "questions": [
+          { "title": "What is data replication and why is it used?" },
+          { "title": "Leader-follower vs leaderless replication" },
+          { "title": "Synchronous vs asynchronous replication" },
+          { "title": "What is replication lag?" },
+          { "title": "How do replicas help availability?" }
+        ]
+      },
+      {
+        "title": "CAP Theorem",
+        "questions": [
+          { "title": "What is the CAP theorem?" },
+          { "title": "What does consistency mean in CAP?" },
+          { "title": "What does availability mean in CAP?" },
+          { "title": "What does partition tolerance mean in CAP?" },
+          { "title": "Can a system guarantee all three? Why or why not?" }
+        ]
+      },
+      {
+        "title": "Consistency Models",
+        "questions": [
+          { "title": "Strong consistency vs eventual consistency" },
+          { "title": "What is read-after-write consistency?" },
+          { "title": "What is causal consistency?" },
+          { "title": "How do distributed systems achieve consistency?" }
+        ]
+      },
+      {
+        "title": "Messaging & Queues",
+        "questions": [
+          { "title": "Why use message queues?" },
+          { "title": "At-most-once vs at-least-once vs exactly-once delivery" },
+          { "title": "What is backpressure?" },
+          { "title": "How do consumer groups work?" },
+          { "title": "Queue vs pub-sub" }
+        ]
+      },
+      {
+        "title": "Microservices",
+        "questions": [
+          { "title": "What are microservices?" },
+          { "title": "Monolith vs microservices tradeoffs" },
+          { "title": "How do microservices communicate?" },
+          { "title": "How do you handle service discovery?" },
+          { "title": "What are common microservice pitfalls?" }
+        ]
+      },
+      {
+        "title": "API Design",
+        "questions": [
+          { "title": "How do you design RESTful APIs?" },
+          { "title": "REST vs RPC vs GraphQL" },
+          { "title": "How do you version APIs?" },
+          { "title": "What are idempotent APIs?" },
+          { "title": "How do you handle backward compatibility?" }
+        ]
+      },
+      {
+        "title": "Rate Limiting",
+        "questions": [
+          { "title": "Why do systems need rate limiting?" },
+          { "title": "Fixed window vs sliding window rate limiting" },
+          { "title": "Token bucket vs leaky bucket" },
+          { "title": "Where should rate limiting be enforced?" }
+        ]
+      },
+      {
+        "title": "Fault Tolerance & Reliability",
+        "questions": [
+          { "title": "What is fault tolerance?" },
+          { "title": "How do retries cause cascading failures?" },
+          { "title": "What is a circuit breaker?" },
+          { "title": "What are timeouts and why are they important?" },
+          { "title": "How do you design for graceful degradation?" }
+        ]
+      },
+      {
+        "title": "Observability",
+        "questions": [
+          { "title": "What is observability?" },
+          { "title": "Logs vs metrics vs traces" },
+          { "title": "What is distributed tracing?" },
+          { "title": "How do you debug issues in distributed systems?" }
+        ]
+      },
+      {
+        "title": "Security",
+        "questions": [
+          { "title": "How do you secure APIs?" },
+          { "title": "Authentication vs authorization" },
+          { "title": "What are JWTs and their tradeoffs?" },
+          { "title": "How do you store secrets securely?" },
+          { "title": "What is defense in depth?" }
+        ]
+      }
+    ]
+  },
+
+
+
+  {
+    "title":"Behavioral Drills",
+    "description":"Common behavioral interview questions to practice.",
+    "subsections":[
+      {
+        "title": "Communication",
+        "questions": [
+          { "title": "Explain a complex technical concept to a non-technical stakeholder." },
+          { "title": "Describe a time when miscommunication caused an issue. How did you fix it?" },
+          { "title": "How do you ensure alignment when working with cross-functional teams?" },
+          { "title": "Tell me about a time you had to push back on a requirement." }
+        ]
+      },
+      {
+        "title": "Conflict & Disagreement",
+        "questions": [
+          { "title": "How did you handle a disagreement within your team?" },
+          { "title": "Describe a time when you disagreed with your manager." },
+          { "title": "Tell me about a conflict over technical decisions and how it was resolved." },
+          { "title": "How do you handle strong opposing opinions in design reviews?" }
+        ]
+      },
+      {
+        "title": "Ownership",
+        "questions": [
+          { "title": "Describe a project you owned end-to-end." },
+          { "title": "Tell me about a time you took responsibility for a failure." },
+          { "title": "How do you ensure quality when no one is watching?" },
+          { "title": "Give an example of going beyond your assigned role." }
+        ]
+      },
+      {
+        "title": "Problem Solving",
+        "questions": [
+          { "title": "Describe a vague problem you had to clarify and solve." },
+          { "title": "Tell me about a time when the obvious solution didn’t work." },
+          { "title": "How do you break down ambiguous problems?" },
+          { "title": "Describe a debugging problem that took significant effort." }
+        ]
+      },
+      {
+        "title": "Decision Making",
+        "questions": [
+          { "title": "Tell me about a difficult technical decision you made with limited data." },
+          { "title": "Describe a tradeoff you had to make under time pressure." },
+          { "title": "How do you evaluate risks while making architectural decisions?" },
+          { "title": "Tell me about a decision you later regretted." }
+        ]
+      },
+      {
+        "title": "Failure & Learning",
+        "questions": [
+          { "title": "Tell me about a project that failed." },
+          { "title": "Describe a mistake that taught you an important lesson." },
+          { "title": "How do you handle production incidents or outages?" },
+          { "title": "Tell me about a time you missed a deadline." }
+        ]
+      },
+      {
+        "title": "Feedback & Growth",
+        "questions": [
+          { "title": "Describe a time you received tough feedback." },
+          { "title": "How do you respond to criticism?" },
+          { "title": "Tell me about feedback you gave that wasn’t well received." },
+          { "title": "How do you identify areas for self-improvement?" }
+        ]
+      },
+      {
+        "title": "Teamwork",
+        "questions": [
+          { "title": "Tell me about a time you helped a struggling teammate." },
+          { "title": "Describe working with someone very different from you." },
+          { "title": "How do you handle uneven workload distribution?" },
+          { "title": "Tell me about a time you had to compromise." }
+        ]
+      },
+      {
+        "title": "Leadership",
+        "questions": [
+          { "title": "Describe a time you led without authority." },
+          { "title": "How do you influence technical direction in a team?" },
+          { "title": "Tell me about mentoring or onboarding someone." },
+          { "title": "Describe a time you motivated a demoralized team." }
+        ]
+      },
+      {
+        "title": "Time Management",
+        "questions": [
+          { "title": "How do you prioritize tasks under tight deadlines?" },
+          { "title": "Describe a time you had too many responsibilities." },
+          { "title": "How do you balance speed vs quality?" },
+          { "title": "Tell me about a time you had to re-prioritize suddenly." }
+        ]
+      },
+      {
+        "title": "Adaptability",
+        "questions": [
+          { "title": "Describe a time when requirements changed late in the project." },
+          { "title": "Tell me about learning a new technology quickly." },
+          { "title": "How do you handle uncertainty?" },
+          { "title": "Describe a time when you had to unlearn something." }
+        ]
+      },
+      {
+        "title": "Ethics & Integrity",
+        "questions": [
+          { "title": "Describe a situation where you raised a concern or risk." },
+          { "title": "How do you handle pressure to cut corners?" },
+          { "title": "Tell me about a time you defended the right technical decision." },
+          { "title": "What does professional integrity mean to you as an engineer?" }
+        ]
+      }
+    ]
+  },
+  
+  {
+    "title": "Java-Specific",
+    "description": "Key Java concepts and object-oriented programming principles.",
+    "subsections": [
+      {
+        "title": "Java-Specific OOPS & Core Concepts",
+        "questions": [
+          { "title": "What is the difference between JDK, JRE, and JVM?" },
+          { "title": "How does Java achieve platform independence?" },
+          { "title": "What is the purpose of the JVM?" },
+          { "title": "Explain class loading process in Java." },
+          { "title": "What are access modifiers in Java and their scope?" },
+          { "title": "What is encapsulation in Java and how is it implemented?" },
+          { "title": "Difference between abstract class and interface in Java." },
+          { "title": "When should you prefer an interface over an abstract class?" },
+          { "title": "What is multiple inheritance and how does Java handle it?" },
+          { "title": "What is method overloading and how is it resolved at compile time?" },
+          { "title": "What is method overriding and how does dynamic dispatch work?" },
+          { "title": "What is the use of the final keyword (class, method, variable)?" },
+          { "title": "Explain the static keyword in Java." },
+          { "title": "Static variables vs instance variables." },
+          { "title": "Static methods vs instance methods." },
+          { "title": "Why can’t static methods access non-static members directly?" },
+          { "title": "What is a static block and when is it executed?" },
+          { "title": "What is immutability? Why is String immutable in Java?" },
+          { "title": "Difference between String, StringBuilder, and StringBuffer." },
+          { "title": "What is object cloning? shallow vs deep copy." },
+          { "title": "Explain equals() and hashCode() contract." },
+          { "title": "Why override hashCode() when overriding equals()?" },
+          { "title": "What is the difference between == and equals()?" },
+          { "title": "What are wrapper classes in Java?" },
+          { "title": "Autoboxing and unboxing – what problems can they cause?" },
+          { "title": "What is garbage collection in Java?" },
+          { "title": "Explain different types of garbage collectors." },
+          { "title": "What is memory leak in Java? How can it happen?" },
+          { "title": "Stack vs Heap memory in Java." },
+          { "title": "What is serialization and deserialization?" },
+          { "title": "What is transient keyword?" },
+          { "title": "What are inner classes and their types?" },
+          { "title": "What is dependency injection in Java context?" }
+        ]
+      },
+      {
+        "title": "Java Multithreading & Concurrency",
+        "questions": [
+          { "title": "What is a thread in Java?" },
+          { "title": "Difference between process and thread." },
+          { "title": "How do you create a thread in Java?" },
+          { "title": "Runnable vs Thread – which one should be preferred?" },
+          { "title": "What is the thread lifecycle in Java?" },
+          { "title": "What happens when you call start() vs run()?" },
+          { "title": "What is concurrency and parallelism?" },
+          { "title": "What are race conditions?" },
+          { "title": "What is thread safety?" },
+          { "title": "How does synchronized keyword work internally?" },
+          { "title": "Synchronized method vs synchronized block." },
+          { "title": "What is intrinsic lock / monitor lock?" },
+          { "title": "What is deadlock? Give a real example." },
+          { "title": "How can deadlock be detected or prevented?" },
+          { "title": "What is livelock and starvation?" },
+          { "title": "What is volatile keyword and what guarantees does it give?" },
+          { "title": "Difference between volatile and synchronized." },
+          { "title": "What is the Java Memory Model (JMM)?" },
+          { "title": "What is happens-before relationship?" },
+          { "title": "What is atomicity? How does AtomicInteger work?" },
+          { "title": "Difference between Atomic variables and locks." },
+          { "title": "What are reentrant locks?" },
+          { "title": "ReentrantLock vs synchronized – differences." },
+          { "title": "What is a thread pool?" },
+          { "title": "Why should threads be reused?" },
+          { "title": "What is ExecutorService?" },
+          { "title": "Difference between FixedThreadPool and CachedThreadPool." },
+          { "title": "What is ScheduledExecutorService?" },
+          { "title": "What is Future in Java?" },
+          { "title": "What is CompletableFuture and why is it better?" },
+          { "title": "How does blocking vs non-blocking code differ?" },
+          { "title": "Explain producer-consumer problem in Java." },
+          { "title": "What are wait(), notify(), and notifyAll()?" },
+          { "title": "Why must wait() be called inside synchronized block?" },
+          { "title": "What are concurrent collections in Java?" },
+          { "title": "How does ConcurrentHashMap achieve thread safety?" },
+          { "title": "Difference between HashMap and ConcurrentHashMap." },
+          { "title": "What is CopyOnWriteArrayList?" },
+          { "title": "How do you design a thread-safe singleton?" },
+          { "title": "What is double-checked locking in Java?" },
+          { "title": "How do you debug concurrency issues in Java applications?" },
+          { "title": "What tools or logs help identify multithreading issues?" }
+        ]
+      }
+    ]
+  }
+]

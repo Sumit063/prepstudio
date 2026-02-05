@@ -206,3 +206,61 @@ class BuddyRelationship(models.Model):
 
     def __str__(self) -> str:
         return f"{self.requester} -> {self.addressee} ({self.status})"
+
+
+class CustomSection(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="custom_sections"
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    is_global = models.BooleanField(default=False)
+    global_key = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class CustomSubsection(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="custom_subsections"
+    )
+    section = models.ForeignKey(
+        CustomSection, on_delete=models.CASCADE, related_name="subsections"
+    )
+    title = models.CharField(max_length=200)
+    is_global = models.BooleanField(default=False)
+    global_key = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("owner", "section", "title")
+
+    def __str__(self) -> str:
+        return f"{self.section.title}: {self.title}"
+
+
+class CustomQuestion(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="custom_questions"
+    )
+    section = models.ForeignKey(
+        CustomSection, on_delete=models.CASCADE, related_name="questions"
+    )
+    subsection = models.ForeignKey(
+        CustomSubsection, on_delete=models.CASCADE, related_name="questions"
+    )
+    title = models.CharField(max_length=200)
+    solution_json = models.JSONField(default=list, blank=True)
+    references_json = models.JSONField(default=list, blank=True)
+    is_done = models.BooleanField(default=False)
+    is_global = models.BooleanField(default=False)
+    global_key = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.title

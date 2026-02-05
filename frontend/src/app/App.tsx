@@ -4,6 +4,7 @@ import { AuthGuard } from "../components/auth/AuthGuard";
 import { Header } from "../components/layout/Header";
 import { Sidebar } from "../components/layout/Sidebar";
 import { Dashboard } from "../pages/Dashboard";
+import { CustomSections } from "../pages/CustomSections";
 import { Design } from "../pages/Design";
 import { DesignDetail } from "../pages/DesignDetail";
 import { DsaDetail } from "../pages/DsaDetail";
@@ -44,6 +45,7 @@ const AppShell = ({
             <Route path="/dsa/:id" element={<DsaDetail />} />
             <Route path="/design" element={<Design />} />
             <Route path="/design/:id" element={<DesignDetail />} />
+            <Route path="/sections" element={<CustomSections />} />
             <Route path="/reviews" element={<Reviews />} />
             <Route path="/sessions" element={<StudySessions />} />
           </Routes>
